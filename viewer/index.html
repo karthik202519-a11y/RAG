@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Pipeline Viewer</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #fff; --ink: #1d2433; --muted: #6b7385; --line: #dfe3ea;
+    --text: #2f6fdb; --text-bg: #eaf1fd; --table: #b86a00; --table-bg: #fff3df;
+    --warn: #b3261e; --warn-bg: #fdecea; --sel: #1d2433;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, Segoe UI, sans-serif; color: var(--ink); background: var(--bg); }
+  header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; position: sticky; top: 0; z-index: 5; }
+  h1 { font-size: 16px; margin: 0 0 8px; }
+  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .flow b { color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font-weight: 600; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  select, input, button { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+  button { cursor: pointer; } button:hover { background: var(--bg); }
+  button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  input[type=number] { width: 78px; }
+  .note { margin: 10px 16px 0; padding: 10px 12px; border-radius: 8px; background: var(--text-bg); border: 1px solid #c9dbf8; }
+  .note.warn { background: var(--warn-bg); border-color: #f2c5c1; }
+  main.page { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr) minmax(300px, 1.15fr); gap: 12px; padding: 12px 16px; align-items: start; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-width: 0; }
+  section > h2 { margin: 0; padding: 8px 12px; font-size: 13px; border-bottom: 1px solid var(--line); background: #fafbfc; }
+  section > h2 small { color: var(--muted); font-weight: 400; }
+  .body { padding: 10px; max-height: 80vh; overflow: auto; }
+  .body img { width: 100%; display: block; border: 1px solid var(--line); }
+  .card { border: 1px solid var(--line); border-left-width: 4px; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; background: #fff; }
+  .card.text { border-left-color: var(--text); } .card.table { border-left-color: var(--table); background: var(--table-bg); }
+  .card.sel { outline: 2px solid var(--sel); }
+  .card pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.4 ui-monospace, Consolas, monospace; max-height: 220px; overflow: auto; }
+  .tag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 10px; margin-right: 4px; }
+  .tag.text { color: var(--text); background: var(--text-bg); } .tag.table { color: var(--table); background: var(--table-bg); }
+  .meta { font-size: 12px; color: var(--muted); }
+  canvas.strip { width: 100%; height: 14px; display: block; margin: 4px 0; image-rendering: pixelated; border: 1px solid var(--line); }
+  .chunk { cursor: pointer; } .chunk:hover { background: #fafbff; }
+  .detail { border-top: 1px solid var(--line); padding: 10px 12px; background: #fafbfc; font-size: 13px; }
+  .detail h3 { margin: 0 0 6px; font-size: 13px; }
+  .nn { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; cursor: pointer; border-bottom: 1px dashed var(--line); }
+  .nn:hover { background: var(--bg); } .nn .s { font-variant-numeric: tabular-nums; font-weight: 700; width: 48px; }
+  code { background: var(--bg); padding: 0 4px; border-radius: 4px; }
+  .tablewrap { margin: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { background: #fafbfc; position: sticky; top: 0; } tr.row { cursor: pointer; } tr.row:hover { background: #f3f6fd; }
+  td.num { font-variant-numeric: tabular-nums; } td.vec { font: 11px ui-monospace, Consolas, monospace; color: var(--muted); }
+  .hidden { display: none; }
+  @media (max-width: 900px) { main.page { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>RAG pipeline viewer <span class="meta">&mdash; what each page becomes</span></h1>
+  <div class="flow">
+    <b>PDF page</b> &rarr; <b>Extracted items</b> (text blocks, tables) &rarr; <b>Chunks</b> (~400 tokens) &rarr;
+    <b>Embedding</b> (1,536 numbers) &rarr; <b>Index row</b> (id + vector + metadata)
+  </div>
+  <div class="bar">
+    <button id="tabPage" class="on">Page view</button>
+    <button id="tabTable">Vector index table</button>
+    <span class="meta">|</span>
+    <select id="showcase"></select>
+    <select id="doc"></select>
+    <button id="prev">&larr;</button>
+    <input id="page" type="number" min="1" value="1"> <span class="meta" id="ofN"></span>
+    <button id="next">&rarr;</button>
+  </div>
+</header>
+
+<div id="pageView">
+  <div id="banner" class="note hidden"></div>
+  <main class="page">
+    <section><h2>1. Original page <small id="pageMeta"></small></h2><div class="body"><img id="img" alt="PDF page"></div></section>
+    <section><h2>2. What extraction produced <small id="itemsMeta"></small></h2><div class="body" id="items"></div></section>
+    <section>
+      <h2>3. Chunks &amp; their vectors <small>(click one)</small></h2>
+      <div class="body" id="chunks"></div>
+      <div class="detail" id="detail">Select a chunk to see its vector and its nearest neighbours.</div>
+    </section>
+  </main>
+</div>
+
+<div id="tableView" class="hidden">
+  <div class="note">
+    This is what a vector database stores for each chunk: an <b>id</b>, the <b>vector</b>, and a <b>payload</b> of metadata (document, pages, type, text).
+    The coloured strip is the 1,536-number vector averaged into 96 cells (blue = positive, orange = negative). Similar text gives similar strips.
+  </div>
+  <div class="bar" style="margin:10px 16px 0">
+    <select id="fDoc"><option value="">all documents</option></select>
+    <select id="fType"><option value="">all types</option><option>text</option><option>table</option></select>
+    <input id="fText" placeholder="search chunk text..." size="28">
+    <span class="meta" id="tCount"></span>
+    <button id="tPrev">&larr;</button><span class="meta" id="tPage"></span><button id="tNext">&rarr;</button>
+  </div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>id</th><th>doc</th><th>pages</th><th>type</th><th>tokens</th><th>section</th><th>vector fingerprint</th><th>first 4 of 1,536 numbers</th><th>text</th></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table></div>
+</div>
+
+<script src="data.js"></script>
+<script>
+const D = window.DATA, DIM = D.dim, N = D.chunks.length;
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const raw = Uint8Array.from(atob(D.vecs), c => c.charCodeAt(0));
+const V = new Int8Array(raw.buffer);
+const norms = new Float64Array(N);
+for (let i = 0; i < N; i++) { let s = 0; for (let k = 0; k < DIM; k++) { const x = V[i*DIM+k]; s += x*x; } norms[i] = Math.sqrt(s); }
+
+const st = { doc: 'nasa', page: 150, sel: null, tpage: 0 };
+
+function cos(a, b) { let s = 0; const oa = a*DIM, ob = b*DIM; for (let k = 0; k < DIM; k++) s += V[oa+k]*V[ob+k]; return s / (norms[a]*norms[b]); }
+function stripColor(v) { const t = Math.min(1, Math.abs(v)/127); return v >= 0 ? `rgb(${255-Math.round(200*t)},${255-Math.round(140*t)},255)` : `rgb(255,${255-Math.round(120*t)},${255-Math.round(210*t)})`; }
+function drawStrip(cv, strip) { cv.width = strip.length; cv.height = 1; const g = cv.getContext('2d'); strip.forEach((v, i) => { g.fillStyle = stripColor(v); g.fillRect(i, 0, 1, 1); }); }
+const pagesOf = doc => D.docs[doc].pages;
+const curPage = () => pagesOf(st.doc)[st.page - 1];
+
+function go(doc, page, sel) {
+  st.doc = doc; st.page = Math.max(1, Math.min(page, pagesOf(doc).length)); st.sel = sel ?? null;
+  renderPage();
+}
+
+function renderPage() {
+  const p = curPage();
+  $('doc').value = st.doc; $('page').value = st.page; $('page').max = pagesOf(st.doc).length;
+  $('ofN').textContent = '/ ' + pagesOf(st.doc).length;
+  $('img').src = `pages/${st.doc}_${st.page}.jpg`;
+  $('pageMeta').textContent = `PDF page ${p.n}` + (p.printed ? ` · printed "${p.printed}"` : '') + (p.sec ? ` · ${p.sec}` : '');
+  const nT = p.items.filter(i => i.t === 'table').length;
+  $('itemsMeta').textContent = `${p.items.length} items (${nT} table${nT === 1 ? '' : 's'})`;
+  $('items').innerHTML = p.items.map(i => `<div class="card ${i.t}"><span class="tag ${i.t}">${i.t}</span><pre>${esc(i.s)}</pre></div>`).join('')
+    || '<div class="meta">Nothing extracted from this page.</div>';
+  const b = $('banner'), sc = D.showcase.find(s => s.doc === st.doc && s.page === st.page);
+  if (sc) { b.className = 'note'; b.innerHTML = `<b>${esc(sc.title)}.</b> ${esc(sc.note)}`; }
+  else if (p.vision) { b.className = 'note warn'; b.innerHTML = `<b>Diagram / graph page</b> (${p.outside} drawn shapes outside tables). Only text labels were extracted; shapes, arrows, colours and plotted points are not in any chunk or vector.`; }
+  else b.className = 'note hidden';
+  $('chunks').innerHTML = '';
+  p.chunks.forEach(g => {
+    const c = D.chunks[g], el = document.createElement('div');
+    el.className = `card chunk ${c.type}` + (g === st.sel ? ' sel' : ''); el.dataset.g = g;
+    el.innerHTML = `<span class="tag ${c.type}">${c.type}</span><b>chunk #${g}</b> <span class="meta">${c.tok} tokens · pages ${c.pages.join(', ')}</span><canvas class="strip"></canvas><pre>${esc(c.text.slice(0, 500))}${c.text.length > 500 ? ' …' : ''}</pre>`;
+    drawStrip(el.querySelector('canvas'), c.strip);
+    el.onclick = () => { st.sel = g; renderPage(); };
+    $('chunks').appendChild(el);
+  });
+  if (!p.chunks.length) $('chunks').innerHTML = '<div class="meta">No chunk covers this page.</div>';
+  renderDetail();
+}
+
+function renderDetail() {
+  const d = $('detail');
+  if (st.sel == null) { d.innerHTML = 'Select a chunk to see its vector and its nearest neighbours.'; return; }
+  const c = D.chunks[st.sel];
+  const nn = [];
+  for (let i = 0; i < N; i++) if (i !== st.sel) nn.push([i, cos(st.sel, i)]);
+  nn.sort((a, b) => b[1] - a[1]);
+  d.innerHTML = `<h3>Chunk #${st.sel} &mdash; ${esc(D.docs[c.doc].label)}</h3>
+    <div class="meta">${c.type} · ${c.tok} tokens · PDF pages ${c.pages.join(', ')} · printed ${c.printed.map(x => x ?? '–').join(', ')}<br>section: ${esc(c.sec ?? '–')}</div>
+    <p>Vector: <b>${DIM} numbers</b>. First 8: <code>${c.head.join(', ')}</code></p>
+    <h3>Nearest chunks in the index (cosine similarity)</h3>` +
+    nn.slice(0, 6).map(([i, s]) => { const o = D.chunks[i]; return `<div class="nn" data-g="${i}"><span class="s">${s.toFixed(3)}</span><span class="tag ${o.type}">${o.type}</span><span class="meta">${o.doc} p${o.pages.join(',')}</span><span>${esc(o.text.replace(/\s+/g, ' ').slice(0, 80))}</span></div>`; }).join('') +
+    `<p class="meta">Retrieval is exactly this: the question becomes a vector, and the chunks with the highest similarity are returned.</p>`;
+  d.querySelectorAll('.nn').forEach(el => el.onclick = () => { const o = D.chunks[+el.dataset.g]; go(o.doc, o.pages[0], +el.dataset.g); });
+}
+
+/* ---------- vector index table ---------- */
+function filtered() {
+  const d = $('fDoc').value, t = $('fType').value, q = $('fText').value.trim().toLowerCase();
+  return D.chunks.filter(c => (!d || c.doc === d) && (!t || c.type === t) && (!q || c.text.toLowerCase().includes(q)));
+}
+function renderTable() {
+  const rows = filtered(), per = 40, pages = Math.max(1, Math.ceil(rows.length / per));
+  st.tpage = Math.min(st.tpage, pages - 1);
+  $('tCount').textContent = `${rows.length} chunks`; $('tPage').textContent = ` ${st.tpage + 1} / ${pages} `;
+  const tb = $('tbody'); tb.innerHTML = '';
+  rows.slice(st.tpage * per, st.tpage * per + per).forEach(c => {
+    const tr = document.createElement('tr'); tr.className = 'row';
+    tr.innerHTML = `<td class="num">${c.g}</td><td>${c.doc}</td><td class="num">${c.pages.join(', ')}</td><td><span class="tag ${c.type}">${c.type}</span></td><td class="num">${c.tok}</td><td>${esc((c.sec ?? '–').slice(0, 40))}</td><td style="width:200px"><canvas class="strip"></canvas></td><td class="vec">[${c.head.slice(0, 4).join(', ')}, …]</td><td>${esc(c.text.replace(/\s+/g, ' ').slice(0, 110))}</td>`;
+    drawStrip(tr.querySelector('canvas'), c.strip);
+    tr.onclick = () => { setTab('page'); go(c.doc, c.pages[0], c.g); };
+    tb.appendChild(tr);
+  });
+}
+function setTab(t) {
+  $('pageView').classList.toggle('hidden', t !== 'page'); $('tableView').classList.toggle('hidden', t !== 'table');
+  $('tabPage').classList.toggle('on', t === 'page'); $('tabTable').classList.toggle('on', t === 'table');
+  if (t === 'table') renderTable();
+}
+
+/* ---------- wiring ---------- */
+Object.entries(D.docs).forEach(([k, v]) => { $('doc').add(new Option(v.label, k)); $('fDoc').add(new Option(v.label, k)); });
+$('showcase').add(new Option('Jump to an example…', ''));
+D.showcase.forEach((s, i) => $('showcase').add(new Option(`${s.title} (${s.doc} p${s.page})`, i)));
+$('showcase').onchange = e => { if (e.target.value === '') return; const s = D.showcase[+e.target.value]; setTab('page'); go(s.doc, s.page); };
+$('doc').onchange = e => go(e.target.value, 1);
+$('page').onchange = e => go(st.doc, +e.target.value);
+$('prev').onclick = () => go(st.doc, st.page - 1); $('next').onclick = () => go(st.doc, st.page + 1);
+$('tabPage').onclick = () => setTab('page'); $('tabTable').onclick = () => setTab('table');
+['fDoc', 'fType', 'fText'].forEach(id => $(id).oninput = () => { st.tpage = 0; renderTable(); });
+$('tPrev').onclick = () => { st.tpage = Math.max(0, st.tpage - 1); renderTable(); };
+$('tNext').onclick = () => { st.tpage++; renderTable(); };
+go('nasa', 29);
+$('showcase').value = D.showcase.findIndex(s => s.doc === 'nasa' && s.page === 29);
+</script>
+</body>
+</html>

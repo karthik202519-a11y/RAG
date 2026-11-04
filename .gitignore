@@ -1,0 +1,30 @@
+# --- secrets: never commit ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# --- python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# --- generated / large data (rebuild with the API or scripts) ---
+data/
+output/
+viewer/data.js
+viewer/pages/
+
+# --- source documents: bring your own PDFs ---
+documents/
+*.pdf
+
+# --- editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,12 @@
+# Tested with Python 3.14. PyMuPDF is pinned: table detection differs a lot between
+# versions (1.28.2 found 359 "tables" in the NASA handbook, 2.0 + layout found 40).
+pymupdf==2.0
+pymupdf-layout==2.0
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.20
+pydantic>=2.8
+numpy>=2.0
+tiktoken>=0.9
+openai>=1.60
+python-dotenv>=1.0
