@@ -90,7 +90,11 @@ optional cost (needs a price you enter), timing.
 | Other embedding providers (OpenAI, Sentence Transformers, Ollama, Cohere, Voyage, CLIP) | Not built |
 | MMR, multi-query, HyDE, query rewriting, parent-document, reranking, graph retrieval | Not built |
 | Embedding Explorer (similarity matrix, 2D projection, model comparison) | Not built (the building blocks, stored vectors and an inspector, exist) |
-| Answer generation with citations | Not built: needs `AZURE_OPENAI_CHAT_DEPLOYMENT` |
+| Answer generation (Azure OpenAI chat): grounded prompt, token-budgeted context, numbered citations, exact-prompt inspector | Implemented + tested with a fake model; **verified live** with `gpt-4o-mini` on the real index (answer, citation check, refusal) |
+| Citation check: every `[n]` must point at a passage that was sent | Implemented + tested. Proves the number exists, **not** that the passage supports the claim |
+| Abstention: grounded-mode refusal, and a minimum-score gate that skips the model call (0 tokens) | Implemented + tested; verified live |
+| Chat deployments `gpt-4o-mini`, `gpt-4o`, `gpt-5-mini`, `gpt-5` | Probed and exist on the configured resource; only `gpt-4o-mini` exercised in an answer |
+| Streaming answers, persisted answers, faithfulness scoring, other LLM providers | Not built |
 | Recall/precision/nDCG, faithfulness, experiment studio | Not built; hit@k/MRR was computed by a script, not by the studio |
 
 ## Not started

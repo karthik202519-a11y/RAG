@@ -5,7 +5,7 @@ documents. Every control is backed by code that actually runs; methods that are 
 labelled **Not built yet** and cannot be run.
 
 > **Status: early.** Ingestion, the chunking lab, embeddings, Qdrant indexes and retrieval (dense, BM25, hybrid) work.
-> Answer generation, reranking, evaluation and most other labs are not built. See [FEATURE_MATRIX.md](FEATURE_MATRIX.md) for exactly
+> Grounded answers with checked citations work too. Reranking, evaluation and most other labs are not built. See [FEATURE_MATRIX.md](FEATURE_MATRIX.md) for exactly
 > what runs and [BUILD_PROGRESS.md](BUILD_PROGRESS.md) for what was verified and what is outstanding.
 
 ## What you can do today
@@ -21,6 +21,8 @@ labelled **Not built yet** and cannot be run.
   embeddings (or an offline demo embedder), an embedding cache, and a stored-record and vector inspector.
 - **Retrieval Lab**: dense, BM25 and hybrid search with the contribution of each retriever on every result, query-embedding
   details, filters, source highlighting in the original document, and a "compare modes" view.
+- **Answers with citations**: ask a chat model (your Azure deployments) to answer only from the retrieved passages; see the exact
+  prompt, token use, and whether each `[n]` citation points at a passage that was sent. A score gate can refuse without spending tokens.
 - **Method Catalog**: 70+ methods with explanations, parameters, advantages, disadvantages and honest status.
 
 ## Quick start (no Docker needed)

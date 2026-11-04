@@ -2,13 +2,19 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, apiBlobUrl, type SearchHit } from "@/lib/api";
+import { api, apiBlobUrl } from "@/lib/api";
 import { Button, Card, ErrorBox, Spinner } from "./ui";
 
 const CONTEXT = 700; // characters shown before and after the matched chunk
 
+/** Everything needed to show a chunk in its source document (a search hit or an answer passage). */
+export type SourceRef = {
+  document_id: string; version_id: string; filename: string; citation: string; text: string;
+  pages: number[]; start: number | null; end: number | null;
+};
+
 /** The original document text around a retrieved chunk, with the chunk highlighted. */
-export function SourcePanel({ hit, onClose }: { hit: SearchHit; onClose: () => void }) {
+export function SourcePanel({ hit, onClose }: { hit: SourceRef; onClose: () => void }) {
   const q = useQuery({
     queryKey: ["source", hit.document_id, hit.version_id],
     queryFn: () => api<{ text: string; filename: string; needs_vision_pages: number[] }>(

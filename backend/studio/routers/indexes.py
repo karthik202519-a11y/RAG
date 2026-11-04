@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import jobs, retrieval
+from .. import generation, jobs, retrieval
 from ..chunking import ChunkingError, validate_params
 from ..config import settings
 from ..db import get_db
@@ -32,8 +32,8 @@ def list_providers(user: User = Depends(current_user)) -> dict:
                     "semantic": p.id != "local_hash"})
     return {"embedding": emb,
             "vector_stores": [{"id": "qdrant", "available": True, "mode": qdrant_store.mode()}],
-            "generation": {"configured": bool(settings.azure_chat_deployment and settings.azure_endpoint and settings.azure_api_key),
-                           "detail": "Set AZURE_OPENAI_CHAT_DEPLOYMENT to enable answer generation (not built yet)."}}
+            "generation": {"configured": generation.generation_status()[0], "detail": generation.generation_status()[1],
+                           "default_model": settings.azure_chat_deployment or None, "models": generation.configured_models()}}
 
 
 @router.post("/providers/{provider_id}/test")
@@ -223,6 +223,42 @@ def search_index(index_id: str, body: SearchIn, user: User = Depends(current_use
     db.commit()
     out["run_id"] = run.id
     return out
+
+
+class AnswerIn(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    model: str | None = Field(None, max_length=100, description="Chat deployment; default AZURE_OPENAI_CHAT_DEPLOYMENT")
+    mode: Literal["dense", "bm25", "hybrid"] = "dense"
+    top_k: int = Field(5, ge=1, le=20)
+    strict: bool = True
+    temperature: float = Field(0.0, ge=0.0, le=2.0)
+    max_output_tokens: int = Field(600, ge=16, le=8000)
+    context_budget: int = Field(3000, ge=20, le=30000, description="Tokens of retrieved context allowed in the prompt")
+    min_score: float | None = Field(None, description="Abstain without calling the model if the best dense score is lower")
+    document_ids: list[str] | None = None
+    system_prompt: str | None = Field(None, max_length=4000)
+    price_in_per_million: float | None = Field(None, ge=0)
+    price_out_per_million: float | None = Field(None, ge=0)
+
+
+@router.post("/indexes/{index_id}/answer")
+def answer_question(index_id: str, body: AnswerIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Retrieve, build a grounded prompt, ask the chat model, and verify its citations against the passages sent."""
+    i = load_index(db, user, index_id)
+    try:
+        return generation.answer(db, i, body.question, model=body.model, mode=body.mode, top_k=body.top_k, strict=body.strict,
+                                 temperature=body.temperature, max_output_tokens=body.max_output_tokens,
+                                 context_budget=body.context_budget, min_score=body.min_score,
+                                 price_in_per_million=body.price_in_per_million, price_out_per_million=body.price_out_per_million,
+                                 system_prompt=body.system_prompt, document_ids=body.document_ids)
+    except generation.GenerationNotConfigured as e:
+        raise HTTPException(409, f"Answer generation is not configured. {e}") from None
+    except DimensionMismatch as e:
+        raise HTTPException(409, str(e)) from None
+    except (generation.GenerationError, ProviderError) as e:
+        raise HTTPException(502, str(e)) from None
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from None
 
 
 @router.get("/indexes/{index_id}/runs")

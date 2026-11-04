@@ -2,12 +2,13 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
-import { GitCompare, Search } from "lucide-react";
+import { GitCompare, MessageSquareText, Search } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { AnswerPanel } from "@/components/answer-panel";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
-import { SourcePanel } from "@/components/source-panel";
-import { api, type Doc, type IndexInfo, type SearchHit, type SearchResponse } from "@/lib/api";
+import { SourcePanel, type SourceRef } from "@/components/source-panel";
+import { api, type AnswerResponse, type Doc, type IndexInfo, type Providers, type SearchHit, type SearchResponse } from "@/lib/api";
 import { useProject } from "@/lib/project";
 
 type Mode = "dense" | "bm25" | "hybrid";
@@ -48,7 +49,15 @@ export default function RetrievalLab() {
   const [rrfK, setRrfK] = useState(60);
   const [docFilter, setDocFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const [picked, setPicked] = useState<SearchHit | null>(null);
+  const [picked, setPicked] = useState<SourceRef | null>(null);
+  const providers = useQuery({ queryKey: ["providers"], queryFn: () => api<Providers>("/providers") });
+  const gen = providers.data?.generation;
+  const [modelState, setModel] = useState("");
+  const model = modelState || gen?.default_model || "";
+  const [strict, setStrict] = useState(true);
+  const [maxOut, setMaxOut] = useState(600);
+  const [budget, setBudget] = useState(3000);
+  const [abstainBelow, setAbstainBelow] = useState("");
 
   const body = (m: Mode) => ({
     query, mode: m, top_k: topK, candidates: m === "hybrid" ? candidates : null, rrf_k: rrfK,
@@ -57,6 +66,14 @@ export default function RetrievalLab() {
   });
   const run = useMutation({
     mutationFn: () => api<SearchResponse>(`/indexes/${indexId}/search`, { method: "POST", json: body(mode) }),
+    onSuccess: () => setPicked(null),
+  });
+  const ask = useMutation({
+    mutationFn: () => api<AnswerResponse>(`/indexes/${indexId}/answer`, {
+      method: "POST",
+      json: { question: query, model, mode, top_k: topK, strict, max_output_tokens: maxOut, context_budget: budget,
+        min_score: abstainBelow === "" ? null : Number(abstainBelow), document_ids: docFilter ? [docFilter] : null },
+    }),
     onSuccess: () => setPicked(null),
   });
   const compare = useMutation({
@@ -74,6 +91,7 @@ export default function RetrievalLab() {
   }
   const res = run.data;
   const cmp = compare.data;
+  const ans = ask.data;
   const canRun = query.trim().length > 0 && !!indexId;
 
   return (
@@ -82,7 +100,7 @@ export default function RetrievalLab() {
       <div className="grid gap-5 xl:grid-cols-[22rem_minmax(0,1fr)]">
         <div className="space-y-4">
           <Card title="Query">
-            <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (canRun) { setPicked(null); compare.reset(); run.mutate(); } }}>
+            <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (canRun) { setPicked(null); compare.reset(); ask.reset(); run.mutate(); } }}>
               <Field label="Index">
                 <Select value={indexId} onChange={(e) => setIndexId(e.target.value)} aria-label="Index">
                   {ready.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.dimension}d)</option>)}
@@ -128,12 +146,38 @@ export default function RetrievalLab() {
               </div>
               <div className="flex gap-2">
                 <Button type="submit" variant="primary" className="flex-1" loading={run.isPending} disabled={!canRun}><Search className="size-4" aria-hidden /> Search</Button>
-                <Button type="button" loading={compare.isPending} disabled={!canRun} onClick={() => { run.reset(); setPicked(null); compare.mutate(); }}>
+                <Button type="button" loading={compare.isPending} disabled={!canRun} onClick={() => { run.reset(); ask.reset(); setPicked(null); compare.mutate(); }}>
                   <GitCompare className="size-4" aria-hidden /> Compare modes
                 </Button>
               </div>
-              <ErrorBox error={run.error ?? compare.error} />
+              <ErrorBox error={run.error ?? compare.error ?? ask.error} />
             </form>
+          </Card>
+          <Card title="Answer with citations">
+            {!gen?.configured ? <p className="text-sm text-dim">Not available: {gen?.detail ?? "checking…"}</p> : (
+              <div className="space-y-3">
+                <Field label="Chat model (deployment)">
+                  <Select value={model} onChange={(e) => setModel(e.target.value)} aria-label="Chat model">
+                    {gen.models.map((m) => <option key={m}>{m}</option>)}
+                  </Select>
+                </Field>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-1" checked={strict} onChange={(e) => setStrict(e.target.checked)} />
+                  <span>Grounded mode<span className="block text-xs text-dim">Answer only from the retrieved passages, otherwise refuse.</span></span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Max answer tokens" hint="Reasoning models (gpt-5) need more."><Input type="number" min={16} value={maxOut} onChange={(e) => setMaxOut(Number(e.target.value))} /></Field>
+                  <Field label="Context budget" hint="Tokens of passages sent."><Input type="number" min={20} value={budget} onChange={(e) => setBudget(Number(e.target.value))} /></Field>
+                </div>
+                <Field label="Refuse without asking the model below score" hint="Optional, dense cosine. Saves tokens on off-topic questions.">
+                  <Input type="number" step="0.05" value={abstainBelow} onChange={(e) => setAbstainBelow(e.target.value)} placeholder="none" />
+                </Field>
+                <Button type="button" variant="primary" className="w-full" loading={ask.isPending} disabled={!canRun}
+                  onClick={() => { run.reset(); compare.reset(); setPicked(null); ask.mutate(); }}>
+                  <MessageSquareText className="size-4" aria-hidden /> Ask with citations
+                </Button>
+              </div>
+            )}
           </Card>
           {res?.info.query_embedding && (
             <Card title="Query embedding">
@@ -151,8 +195,24 @@ export default function RetrievalLab() {
         </div>
 
         <div className="min-w-0 space-y-4">
-          {!res && !cmp && !run.isPending && !compare.isPending && <Empty title="Nothing searched yet">Type a question and press <strong>Search</strong>, or <strong>Compare modes</strong> to see all three side by side.</Empty>}
+          {!res && !cmp && !ans && !run.isPending && !compare.isPending && !ask.isPending && <Empty title="Nothing searched yet">Type a question and press <strong>Search</strong>, <strong>Compare modes</strong> to see all three side by side, or <strong>Ask with citations</strong> for a grounded answer.</Empty>}
           {(run.isPending || compare.isPending) && <Spinner label="Searching" />}
+          {ask.isPending && <Spinner label="Retrieving passages and asking the model" />}
+          {ans && <AnswerPanel r={ans} onOpen={setPicked} />}
+          {ans && ans.context_passages.length > 0 && (
+            <Card title={`Passages sent to the model (${ans.context_passages.length})`} pad={false}>
+              <ol className="divide-y divide-border">
+                {ans.context_passages.map((p) => (
+                  <li key={p.chunk_id}>
+                    <button onClick={() => setPicked(p)} className={clsx("flex w-full gap-3 px-4 py-2 text-left text-sm hover:bg-surface-2", picked?.text === p.text && "bg-accent-soft")}>
+                      <span className="font-mono text-xs font-semibold text-accent">[{p.n}]</span>
+                      <span className="min-w-0"><span className="block font-medium">{p.citation}</span><span className="line-clamp-2 text-xs text-dim">{p.text}</span></span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </Card>
+          )}
 
           {res && (
             <Card title={`${res.results.length} result${res.results.length === 1 ? "" : "s"} · ${MODES.find((m) => m.id === res.mode)?.label}`}>
@@ -162,7 +222,7 @@ export default function RetrievalLab() {
                   {res.results.map((h) => (
                     <li key={h.chunk_id}>
                       <button onClick={() => setPicked(h)} aria-label={`Open result ${h.rank} in its source`}
-                        className={clsx("w-full rounded-lg border p-3 text-left hover:bg-surface-2", picked?.chunk_id === h.chunk_id ? "border-accent bg-accent-soft" : "border-border")}>
+                        className={clsx("w-full rounded-lg border p-3 text-left hover:bg-surface-2", picked?.text === h.text ? "border-accent bg-accent-soft" : "border-border")}>
                         <div className="mb-1 flex flex-wrap items-center gap-2">
                           <span className="grid size-6 place-items-center rounded bg-text font-mono text-xs text-bg">{h.rank}</span>
                           <span className="text-sm font-medium">{h.citation}</span>

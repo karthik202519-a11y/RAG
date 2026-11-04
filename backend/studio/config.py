@@ -45,6 +45,7 @@ class Settings:
     s3_bucket: str = os.getenv("S3_BUCKET", "studio-artifacts")
     qdrant_path: str = os.getenv("QDRANT_PATH", "")  # embedded Qdrant folder when QDRANT_URL is unset
     azure_chat_deployment: str = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT", "")
+    azure_chat_deployments: str = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENTS", "")  # comma list for the model picker
     azure_endpoint: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
     azure_api_key: str = os.getenv("AZURE_OPENAI_API_KEY", "")
     azure_embedding_deployment: str = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "")

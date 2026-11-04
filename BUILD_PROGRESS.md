@@ -60,15 +60,23 @@ Product spec: the RAG Learning Studio master prompt. Scope is very large (17 scr
 - Reciprocal-rank-fusion hybrid did **not** improve on dense search for these natural-language questions. That is a measured result on one document set, not a general claim.
 - Structure-aware chunks that merely contain added text (captions, notes) used to be invisible to the highlighter; locating by verbatim lines fixed it.
 
+### Answer generation (added in this slice)
+
+- Grounded prompt with numbered passages inside a token budget; dropped passages are reported; the exact messages are shown in the UI.
+- Citation markers are checked against the passages actually sent; refusals and a score gate that avoids the model call are supported.
+- 110 tests pass (13 for generation, using a fake chat model). Live: `gpt-4o-mini` answered the PDR question with a resolving citation and refused an off-topic one.
+- Reasoning models (`gpt-5` family) accept no temperature and spend output tokens thinking; the code handles the first and the UI warns about the second.
+
 ### Outstanding from this slice
 
 - Qdrant server mode is untested by the app; other vector stores and embedding providers are not built.
-- No answer generation yet (needs your Azure chat deployment name).
+- Answers are not streamed or saved; faithfulness is not scored.
 - Retrieval quality is measured by an ad-hoc script, not yet by the Evaluation Center.
+- The PDR answer was correct but thin ("defined in Table G-6"): the cited table chunk is large, so the model had little to quote. Row-level table chunks are the likely fix; not yet tried.
 
 ## Next slices (in order)
 
-2. ~~Baseline retrieval~~ (done above). **Next: answer generation with citations** once an Azure chat deployment is configured, then the Evaluation Center (datasets, recall/MRR/nDCG, answer metrics).
+2. ~~Baseline retrieval and grounded answers~~ (done above). **Next: the Evaluation Center** (question sets, recall/MRR/nDCG, faithfulness), then reranking and row-level table chunks.
 3. Embedding explorer, retrieval inspector, more chunkers (semantic, parent-child, contextual).
 4. BM25 + hybrid + reranking; pgvector/Chroma adapters.
 5. Parser lab, tables, multimodal, GraphRAG.

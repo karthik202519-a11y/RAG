@@ -97,6 +97,36 @@ registry.register(MethodSpec(
         ParamSpec(name="rrf_k", label="RRF constant k", type="int", default=60, min=1, max=1000,
                   help="Larger k flattens the advantage of top ranks.")],
     compare_with=["dense", "bm25"]))
+# ---------------------------------------------------------------------- generation
+registry.register(MethodSpec(
+    id="azure_openai_chat", category="generation", stage="Generation", name="Grounded answer (Azure OpenAI chat)",
+    summary="Retrieve passages, then ask a chat model to answer only from them, with numbered citations you can check.",
+    how_it_works="The top passages are numbered and packed into the prompt within a token budget (lower-ranked ones are dropped, "
+                 "and the UI says which). In strict mode the system prompt allows only the supplied passages and demands a "
+                 "fixed refusal sentence when they do not contain the answer. After generation every [n] marker is checked "
+                 "against the passages actually sent. An optional minimum score skips the model call for weak retrievals.",
+    advantages=["Citations are verified against what was sent", "The exact prompt is inspectable", "Abstains instead of guessing"],
+    disadvantages=["Costs tokens per question", "A model can still misread a passage while citing it correctly",
+                   "Citation checking proves the number exists, not that the claim is supported"],
+    needs_cloud_credentials=True, status="requires_credentials",
+    requires=["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_CHAT_DEPLOYMENT"],
+    params=[ParamSpec(name="strict", label="Grounded mode", type="bool", default=True,
+                      help="Only the supplied passages may be used; otherwise the model must refuse."),
+            ParamSpec(name="context_budget", label="Context budget", type="int", default=3000, min=20, max=30000, unit="tokens",
+                      help="Maximum tokens of retrieved text in the prompt."),
+            ParamSpec(name="max_output_tokens", label="Max output tokens", type="int", default=600, min=16, max=8000, unit="tokens",
+                      help="Reasoning models (gpt-5 family) spend part of this on thinking, so allow more."),
+            ParamSpec(name="min_score", label="Abstain below score", type="float", default=None,
+                      help="If the best dense cosine score is lower, refuse without calling the model.")],
+    limitations=["Streaming is not implemented", "Answers are not persisted yet", "Faithfulness is not scored; that needs the Evaluation Center"],
+    recommended_experiment="Ask an on-topic and an off-topic question in grounded mode and read the prompt inspector for each."))
+for _id, _n, _why in [
+    ("openai_chat", "OpenAI chat", "Planned (Stage 3)."), ("anthropic", "Anthropic Claude", "Planned (Stage 3); needs an API key."),
+    ("bedrock", "AWS Bedrock", "Planned (Stage 3)."), ("gemini", "Google Gemini", "Planned (Stage 3)."),
+    ("ollama_chat", "Ollama local models", "Planned (Stage 3)."),
+]:
+    _na(_id, "generation", "Generation", _n, f"{_n}.", _why, True)
+
 for _id, _n, _why in [
     ("mmr", "Maximum marginal relevance", "Planned (Stage 4)."), ("multi_query", "Multi-query retrieval", "Planned (Stage 4); needs an LLM."),
     ("hyde", "HyDE", "Planned (Stage 4); needs an LLM."), ("query_rewrite", "Query rewriting", "Planned (Stage 4); needs an LLM."),

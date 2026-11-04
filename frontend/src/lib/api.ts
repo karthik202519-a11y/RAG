@@ -99,7 +99,7 @@ export type IngestionStats = {
 export type Provider = { id: string; model: string | null; available: boolean; detail: string; semantic: boolean };
 export type Providers = {
   embedding: Provider[]; vector_stores: { id: string; available: boolean; mode: string }[];
-  generation: { configured: boolean; detail: string };
+  generation: { configured: boolean; detail: string; default_model: string | null; models: string[] };
 };
 export type IndexInfo = {
   id: string; project_id: string; name: string; status: "building" | "ready" | "failed"; error: string | null;
@@ -116,6 +116,18 @@ export type SearchHit = {
   rank: number; chunk_id: string; score: number; contributions: Contribution; document_id: string; version_id: string;
   filename: string; chunk_index: number; type: "text" | "table"; section: string | null; pages: number[];
   printed_pages: (string | null)[]; start: number | null; end: number | null; tokens: number; citation: string; text: string;
+};
+export type AnswerResponse = {
+  question: string; model: string; mode: string; strict: boolean; answer: string; abstained: boolean;
+  abstain_reason?: string; empty?: boolean; truncated?: boolean;
+  prompt: { messages: { role: string; content: string }[]; system_tokens: number; context_tokens: number;
+    question_tokens: number; context_budget: number } | null;
+  context_passages: (SearchHit & { n: number })[];
+  dropped_passages: { citation: string; rank: number }[];
+  citations: { cited: number[]; unresolved: number[]; all_resolve: boolean; has_citations: boolean };
+  usage: { prompt_tokens: number; completion_tokens: number; reasoning_tokens: number; served_by: string;
+    finish_reason: string | null; estimated_cost_usd: number | null } | null;
+  timings_ms: Record<string, number>;
 };
 export type SearchResponse = {
   query: string; mode: string; top_k: number; candidates: number; results: SearchHit[]; run_id: string;
