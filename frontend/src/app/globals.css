@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/* Design tokens. Light is the default; dark follows the OS or the manual toggle (data-theme). */
+:root {
+  --bg: #f6f6f3;
+  --surface: #ffffff;
+  --surface-2: #f0f0ec;
+  --border: #dcdcd4;
+  --text: #1c1d1a;
+  --text-dim: #5f6158;
+  --accent: #0f766e;
+  --accent-ink: #ffffff;
+  --accent-soft: #d9efec;
+  --warn: #b45309;
+  --warn-soft: #fdf0d9;
+  --bad: #b42318;
+  --bad-soft: #fde7e4;
+  --good: #1a7f37;
+  --good-soft: #dcf3e1;
+  /* categorical colours for adjacent chunks */
+  --c0: #cfe8e4; --c1: #f6e3b4; --c2: #d9d7f5; --c3: #f5cfd2;
+  --c4: #cfe3f5; --c5: #e3efc4; --c6: #f2d6ea; --c7: #d8ddd0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121311; --surface: #1a1b18; --surface-2: #22231f; --border: #34362f;
+    --text: #ececE6; --text-dim: #a2a398; --accent: #3fb7aa; --accent-ink: #06201d; --accent-soft: #123532;
+    --warn: #e0a24a; --warn-soft: #3a2a10; --bad: #f08a80; --bad-soft: #3d1a17;
+    --good: #66c47c; --good-soft: #15301b;
+    --c0: #1f4a45; --c1: #5a4a1c; --c2: #35336b; --c3: #6a2f35;
+    --c4: #1f3f5c; --c5: #44521d; --c6: #5c2f50; --c7: #3a3f33;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #121311; --surface: #1a1b18; --surface-2: #22231f; --border: #34362f;
+  --text: #ececE6; --text-dim: #a2a398; --accent: #3fb7aa; --accent-ink: #06201d; --accent-soft: #123532;
+  --warn: #e0a24a; --warn-soft: #3a2a10; --bad: #f08a80; --bad-soft: #3d1a17;
+  --good: #66c47c; --good-soft: #15301b;
+  --c0: #1f4a45; --c1: #5a4a1c; --c2: #35336b; --c3: #6a2f35;
+  --c4: #1f3f5c; --c5: #44521d; --c6: #5c2f50; --c7: #3a3f33;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-dim: var(--text-dim);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html, body { background: var(--bg); color: var(--text); }
+body { font-family: var(--font-geist-sans), system-ui, sans-serif; font-size: 14px; line-height: 1.5; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* chunk visualisation */
+.seg { cursor: pointer; border-radius: 2px; transition: filter .12s; }
+.seg:hover { filter: brightness(0.94); }
+.seg-overlap {
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--text) 22%, transparent) 3px 4px);
+}
+.seg-selected { outline: 2px solid var(--accent); outline-offset: 0; }
+.seg-gap { color: var(--text-dim); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--bad) 55%, transparent); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

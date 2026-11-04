@@ -1,0 +1,89 @@
+# RAG Learning Studio - local infrastructure.
+#   docker compose up -d            # infra only (postgres, redis, qdrant, minio)
+#   docker compose --profile app up -d --build   # + backend, worker, frontend
+#
+# Credentials below are LOCAL DEVELOPMENT defaults. Override via .env for anything shared.
+name: rag-studio
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-studio}:${POSTGRES_PASSWORD:-studio_dev}@postgres:5432/${POSTGRES_DB:-studio}
+  REDIS_URL: redis://redis:6379/0
+  QDRANT_URL: http://qdrant:6333
+  S3_ENDPOINT: http://minio:9000
+  S3_ACCESS_KEY: ${MINIO_ROOT_USER:-studio}
+  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-studio_dev_secret}
+  S3_BUCKET: ${S3_BUCKET:-studio-artifacts}
+  STUDIO_SECRET_KEY: ${STUDIO_SECRET_KEY:-}  # empty = backend generates and persists one
+  AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+  AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+  AZURE_OPENAI_EMBEDDING_DEPLOYMENT: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-studio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-studio_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-studio}
+    ports: ["127.0.0.1:5433:5432"]  # 5433 on the host: 5432 is often reserved/used on Windows
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-studio} -d ${POSTGRES_DB:-studio}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: [qdrantdata:/qdrant/storage]
+
+  minio:
+    # MinIO stopped publishing official images to Docker Hub/quay.io in 2025; this is a
+    # community mirror of the last Bitnami build. Swap for any S3-compatible store.
+    image: bitnamilegacy/minio:latest
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-studio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-studio_dev_secret}
+    ports: ["127.0.0.1:9100:9000", "127.0.0.1:9101:9001"]  # host ports 9100/9101: 9000 is often taken
+    volumes: [miniodata:/bitnami/minio/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    profiles: [app]
+    build: { context: ., dockerfile: backend/Dockerfile }
+    environment: *backend-env
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: sh -c "alembic -c backend/alembic.ini upgrade head && uvicorn studio.main:app --host 0.0.0.0 --port 8000"
+
+  worker:
+    profiles: [app]
+    build: { context: ., dockerfile: backend/Dockerfile }
+    environment: *backend-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: celery -A studio.jobs.celery_app worker --loglevel=info --concurrency=${WORKER_CONCURRENCY:-2}
+
+volumes:
+  pgdata:
+  redisdata:
+  qdrantdata:
+  miniodata:

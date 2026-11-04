@@ -1,121 +1,80 @@
-# RAG-I
+# RAG Learning Studio
 
-A step-by-step, evaluated RAG **retrieval** pipeline for long PDFs that contain text, tables,
-and figures. Upload a PDF, chunk it, embed the chunks, and search with cited results
-(document, PDF page, printed page). Everything is an HTTP API.
+A laboratory for building, comparing and understanding retrieval-augmented generation (RAG) on your own
+documents. Every control is backed by code that actually runs; methods that are described but not built are
+labelled **Not built yet** and cannot be run.
 
-> Status: retrieval works end to end and is measured; ranking, charts and a vector database
-> are still to come. See [docs/STATUS.md](docs/STATUS.md) for what is done and what is pending.
+> **Status: early.** Ingestion, the chunking lab, embeddings, Qdrant indexes and retrieval (dense, BM25, hybrid) work.
+> Answer generation, reranking, evaluation and most other labs are not built. See [FEATURE_MATRIX.md](FEATURE_MATRIX.md) for exactly
+> what runs and [BUILD_PROGRESS.md](BUILD_PROGRESS.md) for what was verified and what is outstanding.
 
-```
-PDF --upload--> extract --> chunk --> embed --> search
-        POST /documents   /chunk   /embed   POST /search
-```
+## What you can do today
 
-## Quick start
+- Sign up, create projects and collections.
+- Upload PDF, DOCX, HTML, Markdown, TXT, CSV and JSON files (drag and drop, many at once). Duplicates are
+  detected by content hash; changed content becomes a new version.
+- Watch background parse jobs with live progress; cancel, retry, and see failures with their reason.
+- **Chunking Playground**: cut a real document with 9 methods (fixed characters/tokens, sliding window, recursive,
+  sentence, paragraph, Markdown header, page-aware, structure-aware with table captions), see exactly where each chunk
+  starts and ends, mark overlap, and compare up to four configurations side by side with measured statistics.
+- **Indexes & Embeddings**: build an immutable index (documents + chunker + embedding model) in Qdrant, with Azure OpenAI
+  embeddings (or an offline demo embedder), an embedding cache, and a stored-record and vector inspector.
+- **Retrieval Lab**: dense, BM25 and hybrid search with the contribution of each retriever on every result, query-embedding
+  details, filters, source highlighting in the original document, and a "compare modes" view.
+- **Method Catalog**: 70+ methods with explanations, parameters, advantages, disadvantages and honest status.
+
+## Quick start (no Docker needed)
+
+Backend (Python 3.12+; the project is tested on 3.14):
 
 ```bash
-git clone https://github.com/karthik202519-a11y/RAG-I.git
-cd RAG-I
-python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
+cd backend
+python -m venv ../.venv && source ../.venv/bin/activate     # Windows: ..\.venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env                                  # then fill in your Azure OpenAI details
-uvicorn app.main:app --reload
+PYTHONPATH=. uvicorn studio.main:app --port 8000             # Windows PowerShell: $env:PYTHONPATH="."
 ```
 
-Open <http://127.0.0.1:8000/docs> for the interactive API.
-
-No Azure account yet? Set `RAG_EMBEDDING_BACKEND=fake` in `.env`. It uses an offline hashing
-embedder: good enough to try the API, not for real retrieval quality.
-
-## API
-
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/documents` | Upload a PDF (multipart `file`). Parses it unless `?extract=false`. Same bytes give the same `doc_id`. |
-| `POST` | `/documents/{id}/extract` | (Re)parse the PDF into pages of text blocks and tables |
-| `GET` | `/documents`, `/documents/{id}` | List documents / one document with its status |
-| `DELETE` | `/documents/{id}` | Delete a document and everything derived from it |
-| `GET` | `/documents/{id}/pages/{n}` | The extracted content of page *n* (what the chunker sees) |
-| `GET` | `/documents/{id}/pages/{n}/image` | PNG of a diagram or chart page |
-| `POST` | `/documents/{id}/chunk` | Chunk at `{"size": 400}` tokens (optional `overlap`) |
-| `GET` | `/documents/{id}/chunks` | Browse chunks (`size`, `offset`, `limit`, `type`) |
-| `POST` | `/documents/{id}/embed` | Embed all chunks of a size |
-| `POST` | `/documents/{id}/process` | Extract (if needed), chunk and embed in one call |
-| `POST` | `/search` | Top-k chunks for a query, with scores and citations |
-| `GET` | `/health` | Status and active embedding backend |
-
-### Example
+Frontend (Node 20+):
 
 ```bash
-# 1. upload and parse
-curl -F "file=@handbook.pdf;type=application/pdf" http://127.0.0.1:8000/documents
-#    -> {"doc_id": "8eeb4887a4dc", "pages": 297, "tables": 40, ...}
-
-# 2. chunk and embed
-curl -X POST http://127.0.0.1:8000/documents/8eeb4887a4dc/process \
-     -H "Content-Type: application/json" -d '{"size": 400}'
-
-# 3. search
-curl -X POST http://127.0.0.1:8000/search -H "Content-Type: application/json" \
-     -d '{"query": "What are the entrance criteria for the Preliminary Design Review?", "top_k": 3}'
+cd frontend
+npm install
+npm run dev            # http://localhost:3000
 ```
 
-```json
-{
-  "results": [
-    {
-      "rank": 1, "score": 0.6388, "type": "table",
-      "citation": "handbook.pdf, PDF p.171 (printed 161)",
-      "section": "6.0 Crosscutting Technical Management",
-      "pages": [171], "text": "TABLE 6.7-1 Purpose and Results for Life-Cycle Reviews ..."
-    }
-  ]
-}
+It starts on SQLite, a local artifact folder and an in-process job pool. API docs: <http://127.0.0.1:8000/docs>.
+
+## Scale profile (Docker)
+
+```bash
+docker compose up -d        # Postgres, Redis, Qdrant, MinIO
 ```
 
-Search covers all documents by default; restrict with `doc_ids`, `types` (`text`/`table`)
-or `chunk_size`. Documents not yet embedded at that size are listed under `skipped`,
-not silently ignored.
-
-## How it works
-
-- **Extraction** (`app/extraction.py`): PyMuPDF text blocks in the PDF's own reading order,
-  tables rebuilt cell by cell into Markdown, repeated headers/footers removed, printed page
-  numbers and section titles captured. Pages with many vector drawings are flagged
-  `needs_vision` and rendered to PNG.
-- **Chunking** (`app/chunking.py`): structure-aware. Prose blocks are grouped up to a token
-  budget with block-level overlap. Tables stay whole with their caption and notes; long
-  tables split by rows with the header repeated; tables continued on the next page are linked.
-- **Embedding** (`app/embeddings.py`): Azure OpenAI `text-embedding-3-small`, with a
-  content-hash cache so a text is billed once across documents and re-runs.
-- **Retrieval** (`app/retrieval.py`): cosine similarity over the stored vectors.
-- **Storage** (`app/store.py`): plain files under `data/documents/<doc_id>/`
-  (`source.pdf`, `pages.json`, `chunks_<size>.json`, `vectors_<size>.npy`).
+Point the backend at them with environment variables (see `.env.example`): `DATABASE_URL=postgresql+psycopg://studio:studio_dev@127.0.0.1:5433/studio`,
+`REDIS_URL=redis://127.0.0.1:6379/0` (switches jobs to Celery; run `celery -A studio.jobs.celery_app worker --pool=threads`),
+`S3_ENDPOINT=http://127.0.0.1:9100` for MinIO. Host ports 5433 and 9100/9101 avoid common conflicts on Windows.
+Application containers are not built yet.
 
 ## Tests
 
 ```bash
-pip install -r requirements-dev.txt
-python -m pytest tests -q
+cd backend && pip install -r requirements-dev.txt
+PYTHONPATH=. pytest tests -q                                   # SQLite
+STUDIO_TEST_DATABASE_URL=postgresql+psycopg://studio:studio_dev@127.0.0.1:5433/studio PYTHONPATH=. pytest tests -q   # Postgres
+cd ../frontend && npx tsc --noEmit && npx eslint src
 ```
 
-Tests are offline (fake embedder) and build their own small PDFs.
+## Layout
 
-## Research scripts
-
-`scripts/` holds the numbered scripts used to study each stage and to measure it
-(`07_eval_retrieval.py`, `08_eval_hard.py`, questions in `eval/`). They read a `output/`
-folder produced by the earlier command-line version of this pipeline and are kept as the
-record of how the choices were made. The `app/` package is the maintained code.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short: `backend/studio` (API, registry, parsing, chunking, jobs),
+`frontend` (Next.js), `docker-compose.yml`, and the earlier command-line prototype in `app/` and `scripts/`
+(Azure embeddings, dense retrieval, a 48-question evaluation set), which the studio will absorb in the next slice.
 
 ## Notes
 
-- **Extraction is slow with PyMuPDF 2.0**: about 6.5 minutes for a 297-page handbook, and the
-  upload request blocks until it finishes. Use `?extract=false` and call `/extract` separately
-  if your client has short timeouts. A background job queue is on the list.
-- **No authentication.** Run it locally or behind a gateway.
-- Your PDFs and `.env` are git-ignored. Bring your own documents.
+- Parsing PDFs with PyMuPDF 2.0 is slow (about 1-6 s/page depending on load). Progress is reported per page.
+- No authentication hardening beyond JWT + scrypt + login throttling. Run locally or behind a gateway.
+- Your documents, `.env` and `data/` are git-ignored.
 
 ## License
 

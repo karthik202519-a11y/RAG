@@ -1,7 +1,30 @@
 name: tests
 on: [push, pull_request]
 jobs:
-  test:
+  studio-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements-dev.txt
+      - run: PYTHONPATH=. python -m pytest tests -q
+        working-directory: backend
+  studio-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+        working-directory: frontend
+      - run: npx tsc --noEmit
+        working-directory: frontend
+      - run: npx eslint src
+        working-directory: frontend
+  prototype:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -9,4 +32,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
-      - run: python -m pytest tests -q   # offline: uses the fake embedder, no Azure needed
+      - run: python -m pytest tests -q   # earlier prototype; offline fake embedder
