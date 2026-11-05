@@ -1,4 +1,6 @@
 """Chunking behaviour on documents with known content."""
+import json
+
 import pytest
 
 from studio.chunking import ChunkingError, run_chunking
@@ -20,7 +22,22 @@ PAGES = [page(1, PARAS[:4], section="1.0 Intro"), page(2, PARAS[4:8], section="2
 
 
 @pytest.mark.parametrize("method", [m for m in METHODS if m not in ("markdown_header", "semantic")])  # semantic: see its own tests
-def test_every_method_produces_consistent_chunks(method):
+def test_every_method_produces_consistent_chunks(method, monkeypatch):
+    # Model-backed methods must exercise their model path without local credentials.
+    calls = []
+    if method in ("contextual", "proposition"):
+        from studio.generation import service as gen
+
+        monkeypatch.setattr(gen, "status_for", lambda model: (True, "simulated chat"))
+        monkeypatch.setattr(gen, "default_model", lambda: "simulated-chat")
+
+        def chat(model, messages, temperature, max_output_tokens):
+            calls.append(messages)
+            text = (json.dumps({"propositions": [messages[-1]["content"]]})
+                    if method == "proposition" else "This passage discusses the document topic.")
+            return gen.ChatResult(text, 10, 5, 0, "stop", model)
+
+        monkeypatch.setattr(gen, "chat_complete", chat)
     r = run_chunking(PAGES, method, {"size": 60, "overlap": 8} if method in ("fixed_token", "recursive") else None)
     canon = build_canon(PAGES)
     assert r["chunks"], method
@@ -31,6 +48,10 @@ def test_every_method_produces_consistent_chunks(method):
         if c["start"] is not None:
             assert 0 <= c["start"] < c["end"] <= len(canon.text)
     assert r["stats"]["chunk_count"] == len(r["chunks"])
+    if method in ("contextual", "proposition"):
+        assert calls, "The model-backed path must run, not silently fall back."
+    if method == "contextual":
+        assert all(c.get("context") for c in r["chunks"])
 
 
 @pytest.mark.parametrize("method", ["fixed_char", "fixed_token", "sliding_window", "recursive", "sentence",

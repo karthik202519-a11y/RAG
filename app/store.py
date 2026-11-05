@@ -7,6 +7,8 @@
     chunks_<size>.json    chunks for a given target size (tokens)
     vectors_<size>.npy    one normalized embedding per chunk, same order
 """
+from __future__ import annotations
+
 import hashlib
 import json
 import re
