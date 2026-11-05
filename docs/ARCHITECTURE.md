@@ -41,6 +41,31 @@
    overlap, mid-sentence endings, duplication, coverage → response.
 4. The UI slices the shared canonical text with those spans to draw exact colored chunk boundaries.
 
+## Retrieval, generation and evaluation
+
+```
+question ─▶ query transform (LLM, optional) ─▶ retrieve (dense | BM25 | hybrid, per query) ─▶ fuse (RRF)
+         ─▶ MMR (optional) ─▶ LLM rerank (optional) ─▶ top-k with per-stage contributions
+                                  │
+                                  ├─▶ grounded answer: numbered passages in a token budget -> chat model -> citation check
+                                  └─▶ evaluation: labelled questions -> metrics -> paired comparison between runs
+```
+
+- `retrieval/service.py` is one retriever; `retrieval/pipeline.py` composes stages and reports each one with timing and
+  LLM tokens, so a query transformation is never confused with the search it feeds.
+- `jobs/index_job.py` builds an index: chunk the frozen document versions, embed through the cache, write to Qdrant.
+  A retry starts clean, so a half-built index can never be searched.
+- `jobs/figures_job.py` writes vision descriptions back into the extraction, checkpointed per page.
+- `evaluation/metrics.py` holds the pure metric functions; `evaluation/service.py` imports questions, runs them and
+  compares runs; `jobs/eval_job.py` executes a run in the background.
+- Labels are (document fragment or id, pages), not chunk ids, so one labelled dataset can score any index.
+
+## Deployment
+
+`docker compose up -d` starts Postgres, Redis, Qdrant and MinIO. `--profile app` adds the API, a Celery worker (same image)
+and the web UI. With `DATABASE_URL`, `REDIS_URL`, `QDRANT_URL` and `S3_ENDPOINT` set the app uses all four; with none set it
+runs on SQLite, an embedded Qdrant, a local folder and a thread pool.
+
 ## Layout
 
 ```
@@ -49,8 +74,13 @@ backend/studio/
   registry/    method specs (chunking_specs.py, parser_specs.py)
   parsing/     pdf.py (PyMuPDF), textlike.py (txt, md, docx, html, csv, json)
   chunking/    canon.py tokens.py methods.py engine.py structure.py
-  jobs/        runner.py tasks.py celery_app.py
-  routers/     auth, projects, documents, jobs_api, catalog, chunking_api
+  embeddings/  providers.py (Azure OpenAI, offline demo) service.py (cache)
+  vectorstores/  qdrant_store.py
+  retrieval/   service.py (dense, BM25, hybrid) pipeline.py (transforms, MMR, rerank)
+  generation/  service.py (grounded answers, vision)
+  evaluation/  metrics.py service.py
+  jobs/        runner.py tasks.py index_job.py figures_job.py eval_job.py celery_app.py
+  routers/     auth, projects, documents, jobs_api, catalog, chunking_api, indexes, explorer, evaluation
 backend/alembic/  migrations         backend/tests/  76 tests
 frontend/src/    app/ (pages)  components/  lib/ (api, auth, project, planned)
 app/ scripts/    earlier prototype: embedding + dense retrieval + evaluation (not yet merged into studio/)

@@ -5,13 +5,14 @@ documents. Every control is backed by code that actually runs; methods that are 
 labelled **Not built yet** and cannot be run.
 
 > **Status: early.** Ingestion, the chunking lab, embeddings, Qdrant indexes and retrieval (dense, BM25, hybrid) work.
-> Grounded answers with checked citations work too. Reranking, evaluation and most other labs are not built. See [FEATURE_MATRIX.md](FEATURE_MATRIX.md) for exactly
+> Grounded answers with checked citations, query transforms, reranking, vision descriptions of diagrams, an Embedding
+> Explorer and an Evaluation Center work too. The parser lab, GraphRAG, pipeline builder and several others are not built. See [FEATURE_MATRIX.md](FEATURE_MATRIX.md) for exactly
 > what runs and [BUILD_PROGRESS.md](BUILD_PROGRESS.md) for what was verified and what is outstanding.
 
 ## What you can do today
 
 - Sign up, create projects and collections.
-- Upload PDF, DOCX, HTML, Markdown, TXT, CSV and JSON files (drag and drop, many at once). Duplicates are
+- Upload PDF, DOCX, PPTX, XLSX, HTML, Markdown, TXT, CSV, JSON and XML files (drag and drop, many at once). Duplicates are
   detected by content hash; changed content becomes a new version.
 - Watch background parse jobs with live progress; cancel, retry, and see failures with their reason.
 - **Chunking Playground**: cut a real document with 9 methods (fixed characters/tokens, sliding window, recursive,
@@ -23,6 +24,9 @@ labelled **Not built yet** and cannot be run.
   details, filters, source highlighting in the original document, and a "compare modes" view.
 - **Answers with citations**: ask a chat model (your Azure deployments) to answer only from the retrieved passages; see the exact
   prompt, token use, and whether each `[n]` citation points at a passage that was sent. A score gate can refuse without spending tokens.
+- **Evaluation Center**: label questions with where the answer lives, run them against any index or retrieval setup, and compare runs
+  on the same questions with confidence intervals and a paired significance check. Metrics without evidence show "not available".
+- **Embedding Explorer**: a 2D projection of your stored vectors and a side-by-side cosine / dot / Euclidean comparison.
 - **Method Catalog**: 70+ methods with explanations, parameters, advantages, disadvantages and honest status.
 
 ## Quick start (no Docker needed)
@@ -55,7 +59,7 @@ docker compose up -d        # Postgres, Redis, Qdrant, MinIO
 Point the backend at them with environment variables (see `.env.example`): `DATABASE_URL=postgresql+psycopg://studio:studio_dev@127.0.0.1:5433/studio`,
 `REDIS_URL=redis://127.0.0.1:6379/0` (switches jobs to Celery; run `celery -A studio.jobs.celery_app worker --pool=threads`),
 `S3_ENDPOINT=http://127.0.0.1:9100` for MinIO. Host ports 5433 and 9100/9101 avoid common conflicts on Windows.
-Application containers are not built yet.
+`docker compose --profile app up -d --build` also builds and runs the API, a Celery worker and the web UI (verified end to end).
 
 ## Tests
 

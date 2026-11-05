@@ -42,6 +42,16 @@ _p("csv", "CSV", "Reads a CSV file as one Markdown table.", "Parses rows with th
 _p("json", "JSON", "Reads JSON as pretty-printed text.", "Parses and re-serializes with indentation.",
    ["Exact"], ["No record-level structure yet"], ["json"], docs=["Structured data"])
 
+_p("python_pptx", "PPTX (python-pptx)", "Reads PowerPoint decks: one page per slide, with titles, text, tables and speaker notes.",
+   "Walks each slide's shapes with python-pptx; the title becomes the section, tables become Markdown, notes are appended.",
+   ["Slide numbers work as page citations", "Keeps tables and notes"], ["Images, charts and SmartArt are ignored", "Reading order follows shape order, not layout"], ["pptx"], docs=["Slide decks"])
+_p("openpyxl", "XLSX (openpyxl)", "Reads Excel workbooks: one page per sheet, the used range as a Markdown table.",
+   "Loads cell values (not formulas) read-only and renders each sheet as one table.",
+   ["Sheet names are kept as sections", "Handles large sheets read-only"], ["Formulas show computed values only", "Charts and images are ignored",
+    "A very large sheet becomes one very large table (use row-level table chunking)"], ["xlsx"], docs=["Spreadsheets"])
+_p("xml_etree", "XML", "Reads XML as 'path/to/element: text' lines.", "Parses with the standard library without resolving entities, then walks elements in order.",
+   ["Keeps element paths and attributes", "Entity expansion is not performed"], ["No schema awareness", "Mixed content loses interleaving"], ["xml"], docs=["Structured data"])
+
 _NA = {
     "pdfplumber": ("pdfplumber", "Planned (Stage 5)."),
     "docling": ("Docling (layout-aware)", "Planned (Stage 5); needs the docling package and models."),
@@ -53,8 +63,6 @@ _NA = {
     "aws_textract": ("AWS Textract", "Planned (Stage 5); needs AWS credentials."),
     "google_document_ai": ("Google Document AI", "Planned (Stage 5); needs Google credentials."),
     "llamaparse": ("LlamaParse", "Planned (Stage 5); needs a LlamaCloud API key."),
-    "python_pptx": ("PPTX", "Planned (Stage 2b); PowerPoint files are not yet accepted."),
-    "xlsx": ("XLSX", "Planned (Stage 2b); Excel files are not yet accepted."),
 }
 for _id, (_name, _why) in _NA.items():
     _p(_id, _name, f"{_name} parser.", "Not implemented yet.", [], [], [], status="unavailable", reason=_why)

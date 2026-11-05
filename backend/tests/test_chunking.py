@@ -129,6 +129,46 @@ def test_continued_table_chunks_are_located_and_always_carry_pages():
     assert tables[0]["section"] == "9.0 Reviews"
 
 
+REVIEWS = ("| Review | Purpose | Timing |\n|---|---|---|\n| PDR | Baseline the preliminary design | End of Phase B |\n"
+           "| CDR | Approve the critical design | End of Phase C |\n| SIR | Check readiness for integration | Phase D |")
+
+
+def test_table_rows_makes_one_chunk_per_row_repeating_caption_and_headers():
+    pages = [page(1, ["TABLE 7-1 Life-cycle reviews", "Some prose."], tables=[REVIEWS], section="7.0 Reviews")]
+    r = run_chunking(pages, "table_rows", {"size": 200, "overlap": 20})
+    rows = [c for c in r["chunks"] if c["type"] == "table"]
+    assert len(rows) == 3
+    for c in rows:
+        assert "TABLE 7-1 Life-cycle reviews" in c["text"] and "| Review | Purpose | Timing |" in c["text"]
+        assert c["pages"] == [1] and c["section"] == "7.0 Reviews" and c["start"] is not None
+    assert "CDR" in rows[1]["text"] and "PDR" not in rows[1]["text"]  # the row is alone with its headers
+    assert any(c["type"] == "text" and "Some prose" in c["text"] for c in r["chunks"])
+
+
+def test_table_rows_key_value_format_and_row_grouping():
+    pages = [page(1, ["TABLE 7-1 Life-cycle reviews"], tables=[REVIEWS])]
+    kv = run_chunking(pages, "table_rows", {"row_format": "key_value"})["chunks"]
+    cdr = next(c for c in kv if "CDR" in c["text"])
+    assert "Review: CDR; Purpose: Approve the critical design; Timing: End of Phase C" in cdr["text"] and "|" not in cdr["text"]
+    grouped = run_chunking(pages, "table_rows", {"rows_per_chunk": 2})["chunks"]
+    assert [c["text"].count("| PDR |") + c["text"].count("| CDR |") + c["text"].count("| SIR |")
+            for c in grouped if c["type"] == "table"] == [2, 1]
+
+
+def test_table_rows_continued_table_keeps_its_caption_and_correct_page():
+    head = "| Review | Purpose |\n|---|---|\n"
+    pages = [page(1, ["TABLE 9-1 Reviews"], tables=[head + "| PDR | design |"]),
+             page(2, ["Between."], tables=[head + "| CDR | critical |"])]
+    rows = [c for c in run_chunking(pages, "table_rows", None)["chunks"] if c["type"] == "table"]
+    assert [c["pages"] for c in rows] == [[1], [2]]
+    assert all("TABLE 9-1 Reviews" in c["text"] for c in rows)
+
+
+def test_table_rows_without_tables_warns_and_still_chunks_prose():
+    r = run_chunking(PAGES[:2], "table_rows", None)
+    assert r["chunks"] and any("No tables" in w for w in r["warnings"])
+
+
 def test_markdown_header_splits_on_headings():
     md = [{"doc": "d.md", "pdf_page": 1, "printed_page": None, "section": None, "needs_vision": False,
            "drawings_outside_tables": 0, "image_path": None,

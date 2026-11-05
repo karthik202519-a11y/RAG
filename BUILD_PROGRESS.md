@@ -74,11 +74,57 @@ Product spec: the RAG Learning Studio master prompt. Scope is very large (17 scr
 - Retrieval quality is measured by an ad-hoc script, not yet by the Evaluation Center.
 - The PDR answer was correct but thin ("defined in Table G-6"): the cited table chunk is large, so the model had little to quote. Row-level table chunks are the likely fix; not yet tried.
 
+## Slice 3: everything else that could be built and verified, then evaluation
+
+Built, with automated tests (167 pass on SQLite and on PostgreSQL 16) and live checks on the real NASA handbook:
+row-level table chunking, query transforms (rewrite, multi-query, HyDE, decomposition), MMR, LLM reranking, vision
+descriptions of diagram pages, PPTX/XLSX/XML parsers, the Embedding Explorer, the Evaluation Center, and containers for
+the whole application.
+
+### Measured results (the same 34 labelled NASA questions; 31 answerable; hit/MRR at k=5)
+
+| Configuration | Hit | MRR | nDCG | vs dense (paired MRR, 95% CI) |
+|---|---|---|---|---|
+| Dense | 0.871 | 0.743 | 0.763 | baseline |
+| BM25 | 0.710 | 0.495 | 0.535 | -0.248 [-0.44, -0.07]: **real** |
+| Hybrid (RRF) | 0.903 | 0.703 | 0.741 | -0.040 [-0.16, +0.06]: noise |
+| Dense + LLM rerank | 0.839 | 0.716 | 0.735 | -0.027 [-0.10, +0.05]: noise |
+| Dense + HyDE | 0.871 | 0.688 | 0.734 | -0.055 [-0.20, +0.08]: noise |
+| Dense on the older index without figure text | 0.871 | 0.748 | 0.767 | +0.005 [0.00, +0.02]: noise |
+
+Reading it honestly: on these questions plain dense search is a strong baseline, BM25 alone is clearly worse, and
+hybrid, reranking and HyDE are not distinguishable from it. This is one document set and 31 questions, with the test
+split not held out, so it supports "BM25 alone is worse here" and nothing stronger. Figure descriptions did not move the
+page-hit metrics (the diagram pages were already retrieved) but changed an answer: a flowchart question that was refused
+(`N7`) was answered correctly once the page description was indexed. Page-hit metrics cannot see that kind of gain.
+
+### Bugs found by testing and fixed
+
+1. **nDCG above 1** (and average precision above 1): several chunks from one labelled page each earned credit while the
+   ideal ranking had one per evidence item. Found by the live evaluation, fixed by crediting each evidence item once, with
+   a regression test and a randomized bounds test.
+2. **Dependencies missing from `requirements.txt`** (Qdrant, BM25, NumPy, OpenAI, PowerPoint, Excel): the containers
+   crashed on start. Fixed, with a test that checks every import is declared.
+3. HyDE and rewrite were *added to* the original query, so a weak original diluted the better one; they now replace it
+   (HyDE keeps the original only for keyword matching).
+4. The frontend image could not build offline because fonts were fetched from Google at build time; switched to the
+   self-hosted Geist package.
+5. Dashboard copy still said embeddings and evaluation were "not in the studio".
+6. Continued-table chunks, BM25 on tiny corpora, cancelled-parse state and an import-order cycle (Slices 1 and 2).
+
+### Known limits
+
+- The 10,000-document load test has not been run.
+- Faithfulness and answer correctness are not measured (need an LLM judge or human labels).
+- Structure-aware chunking still produces large table chunks; the row-level method exists but has not been compared in
+  the Evaluation Center on a table-heavy question set.
+- Figure descriptions are page-level, unverified model output, and cost tokens.
+- Frontend image is 1.9 GB; API image is 850 MB.
+- Only `gpt-4o-mini` and `gpt-4o` were exercised end to end; `gpt-5` models need a larger output-token limit.
+
 ## Next slices (in order)
 
-2. ~~Baseline retrieval and grounded answers~~ (done above). **Next: the Evaluation Center** (question sets, recall/MRR/nDCG, faithfulness), then reranking and row-level table chunks.
-3. Embedding explorer, retrieval inspector, more chunkers (semantic, parent-child, contextual).
-4. BM25 + hybrid + reranking; pgvector/Chroma adapters.
-5. Parser lab, tables, multimodal, GraphRAG.
-6. Evaluation datasets and metrics, experiment studio, comparison dashboard.
-7. Scale and hardening: load test, application containers, security review.
+1. Compare row-level tables, semantic and parent-child chunking in the Evaluation Center on a table-heavy question set.
+2. LLM-judge faithfulness and human annotation; LLM-generated candidate questions with approval.
+3. Parser comparison lab (pdfplumber, Docling, OCR), pgvector and other vector stores, GraphRAG, pipeline builder.
+4. The 10,000-document load test, tracing, rate limits and a security review.

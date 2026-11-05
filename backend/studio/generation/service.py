@@ -92,6 +92,36 @@ def chat_complete(model: str, messages: list[dict], temperature: float, max_outp
                       getattr(details, "reasoning_tokens", 0) or 0, r.choices[0].finish_reason, r.model)
 
 
+def vision_status() -> tuple[bool, str]:
+    missing = [n for n, v in (("AZURE_OPENAI_ENDPOINT", settings.azure_endpoint), ("AZURE_OPENAI_API_KEY", settings.azure_api_key),
+                              ("AZURE_OPENAI_VISION_DEPLOYMENT", settings.azure_vision_deployment)) if not v]
+    return (not missing, f"Set in .env: {', '.join(missing)}" if missing else "configured")
+
+
+def chat_vision(model: str, prompt: str, image_png: bytes, max_output_tokens: int = 700) -> ChatResult:
+    """Ask a vision-capable deployment about one PNG image."""
+    import base64
+    ok, why = vision_status()
+    if not ok:
+        raise GenerationNotConfigured(why)
+    from openai import OpenAI
+    client = OpenAI(base_url=settings.azure_endpoint.rstrip("/") + "/openai/v1/", api_key=settings.azure_api_key,
+                    timeout=180, max_retries=2)
+    b64 = base64.b64encode(image_png).decode()
+    content = [{"type": "text", "text": prompt},
+               {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}", "detail": "high"}}]
+    try:
+        r = client.chat.completions.create(model=model, messages=[{"role": "user", "content": content}],
+                                           max_completion_tokens=max_output_tokens)
+    except Exception as e:
+        code = getattr(e, "status_code", None)
+        if code == 404:
+            raise GenerationError(f"Vision deployment '{model}' was not found on this Azure resource.") from e
+        raise GenerationError(f"Vision request failed ({type(e).__name__}{f' {code}' if code else ''}).") from e
+    u = r.usage
+    return ChatResult(r.choices[0].message.content or "", u.prompt_tokens, u.completion_tokens, 0, r.choices[0].finish_reason, r.model)
+
+
 def build_context(hits: list[dict], budget_tokens: int) -> tuple[str, list[dict], list[dict]]:
     """Number passages in rank order until the token budget is spent. Returns (text, used, dropped)."""
     blocks, used, dropped, spent = [], [], [], 0

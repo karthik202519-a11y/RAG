@@ -2,7 +2,7 @@
 from celery import Celery
 
 from ..config import settings
-from . import index_job, tasks  # noqa: F401  (registers job handlers)
+from . import eval_job, figures_job, index_job, tasks  # noqa: F401  (registers job handlers)
 from .runner import run_job
 
 celery_app = Celery("studio", broker=settings.redis_url or "memory://", backend=None)

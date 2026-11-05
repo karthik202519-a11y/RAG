@@ -51,12 +51,14 @@ export default function Dashboard() {
         </Card>
         <Card title="What works today">
           <ul className="space-y-1.5 text-sm">
-            <li>Upload and parse PDF, DOCX, HTML, Markdown, TXT, CSV, JSON</li>
-            <li>Background jobs with retry, cancel and restart recovery</li>
-            <li>{cat.data?.counts.implemented ?? "…"} methods that run for real; {cat.data?.counts.unavailable ?? "…"} described but not built</li>
-            <li>Chunking Playground with 9 working chunkers</li>
+            <li>Upload and parse PDF, DOCX, PPTX, XLSX, HTML, Markdown, TXT, CSV, JSON and XML, with background jobs you can retry and cancel</li>
+            <li>Chunking Playground: {cat.data?.items.filter((m) => m.category === "chunking" && m.status !== "unavailable").length ?? "…"} chunkers, compared side by side</li>
+            <li>Embeddings into Qdrant, dense / BM25 / hybrid retrieval, query transforms, MMR and LLM reranking</li>
+            <li>Grounded answers with checked citations; vision descriptions of diagram pages</li>
+            <li>Evaluation Center: labelled questions, recall / MRR / nDCG with confidence intervals, paired run comparison</li>
+            <li>{cat.data?.counts.implemented ?? "…"} methods run for real; {cat.data?.counts.unavailable ?? "…"} are described but not built</li>
           </ul>
-          <p className="mt-3 text-xs text-dim">Embeddings, vector search, answers and evaluation are not in the studio yet; see the greyed items in the sidebar.</p>
+          <p className="mt-3 text-xs text-dim">Not built: the parser comparison lab, GraphRAG, pipeline builder, experiment studio, tracing and settings screens (greyed in the sidebar).</p>
         </Card>
       </div>
     </div>

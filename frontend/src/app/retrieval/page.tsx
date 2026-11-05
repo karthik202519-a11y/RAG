@@ -22,6 +22,10 @@ function Contributions({ h, mode }: { h: SearchHit; mode: string }) {
   const c = h.contributions;
   return (
     <div className="flex flex-wrap gap-1.5 text-[11px]">
+      {h.rerank && <Badge tone={h.rerank.moved > 0 ? "good" : h.rerank.moved < 0 ? "bad" : "neutral"} title="Rank before and after the LLM reranker, and its 0-10 score">
+        rerank {h.rerank.before_rank}→{h.rerank.after_rank} · LLM {h.rerank.score}/10</Badge>}
+      {h.mmr && <Badge title="Relevance to the query, and similarity to the already-selected results">mmr rel {h.mmr.relevance} · overlap {h.mmr.max_similarity_to_selected}</Badge>}
+      {h.queries_found_by != null && h.queries_found_by > 1 && <Badge tone="accent">found by {h.queries_found_by} queries</Badge>}
       {c.dense && <Badge tone="accent" title="Rank and cosine similarity from the vector search">dense #{c.dense.rank} · cos {c.dense.score.toFixed(3)}</Badge>}
       {c.bm25 && <Badge tone="warn" title="Rank and BM25 score from the keyword search">bm25 #{c.bm25.rank} · {c.bm25.score.toFixed(2)}</Badge>}
       {c.bm25 && c.bm25.matched_terms.length > 0 && <Badge title="Query terms found in this chunk">matched: {c.bm25.matched_terms.join(", ")}</Badge>}
@@ -58,6 +62,11 @@ export default function RetrievalLab() {
   const [maxOut, setMaxOut] = useState(600);
   const [budget, setBudget] = useState(3000);
   const [abstainBelow, setAbstainBelow] = useState("");
+  const [transform, setTransform] = useState("none");
+  const [rerank, setRerank] = useState("none");
+  const [mmrOn, setMmrOn] = useState(false);
+  const [mmrLambda, setMmrLambda] = useState(0.6);
+  const advanced = transform !== "none" || rerank !== "none" || mmrOn;
 
   const body = (m: Mode) => ({
     query, mode: m, top_k: topK, candidates: m === "hybrid" ? candidates : null, rrf_k: rrfK,
@@ -65,7 +74,13 @@ export default function RetrievalLab() {
     document_ids: docFilter ? [docFilter] : null, types: typeFilter ? [typeFilter] : null,
   });
   const run = useMutation({
-    mutationFn: () => api<SearchResponse>(`/indexes/${indexId}/search`, { method: "POST", json: body(mode) }),
+    mutationFn: () => advanced
+      ? api<SearchResponse>(`/indexes/${indexId}/retrieve`, { method: "POST", json: {
+          query, mode, top_k: topK, transform, rerank, mmr: mmrOn, mmr_lambda: mmrLambda, rrf_k: rrfK,
+          llm_model: gen?.default_model ?? null, rerank_candidates: Math.max(topK, 15),
+          score_threshold: threshold === "" ? null : Number(threshold),
+          document_ids: docFilter ? [docFilter] : null, types: typeFilter ? [typeFilter] : null } })
+      : api<SearchResponse>(`/indexes/${indexId}/search`, { method: "POST", json: body(mode) }),
     onSuccess: () => setPicked(null),
   });
   const ask = useMutation({
@@ -153,6 +168,30 @@ export default function RetrievalLab() {
               <ErrorBox error={run.error ?? compare.error ?? ask.error} />
             </form>
           </Card>
+          <Card title="Advanced retrieval (optional)">
+            <div className="space-y-3">
+              <Field label="Query transformation" hint="Rewrites or expands the question before searching. Uses the chat model (costs tokens).">
+                <Select value={transform} onChange={(e) => setTransform(e.target.value)} aria-label="Query transformation">
+                  <option value="none">None</option><option value="rewrite">Rewrite (replaces the question)</option>
+                  <option value="multi_query">Multi-query (3 variants, fused)</option><option value="hyde">HyDE (embed a hypothetical answer)</option>
+                  <option value="decompose">Decompose (sub-questions)</option>
+                </Select>
+              </Field>
+              <Field label="Reranking" hint="The chat model scores each candidate 0-10 and reorders. Original scores are kept.">
+                <Select value={rerank} onChange={(e) => setRerank(e.target.value)} aria-label="Reranking">
+                  <option value="none">None</option><option value="llm">LLM reranker</option>
+                </Select>
+              </Field>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-1" checked={mmrOn} onChange={(e) => setMmrOn(e.target.checked)} />
+                <span>Diversify results (MMR)<span className="block text-xs text-dim">Skip near-duplicate chunks. No LLM needed.</span></span>
+              </label>
+              {mmrOn && <Field label={`Relevance vs diversity: ${mmrLambda}`} hint="1 = only relevance, 0 = only diversity.">
+                <input type="range" min={0} max={1} step={0.05} value={mmrLambda} onChange={(e) => setMmrLambda(Number(e.target.value))} className="w-full" aria-label="MMR lambda" />
+              </Field>}
+              {(transform !== "none" || rerank !== "none") && !gen?.configured && <p className="text-xs text-warn">These options need the chat model: {gen?.detail}</p>}
+            </div>
+          </Card>
           <Card title="Answer with citations">
             {!gen?.configured ? <p className="text-sm text-dim">Not available: {gen?.detail ?? "checking…"}</p> : (
               <div className="space-y-3">
@@ -214,6 +253,7 @@ export default function RetrievalLab() {
             </Card>
           )}
 
+          {res?.stages && <StageTrace res={res} />}
           {res && (
             <Card title={`${res.results.length} result${res.results.length === 1 ? "" : "s"} · ${MODES.find((m) => m.id === res.mode)?.label}`}>
               {res.info.query_terms && <p className="mb-2 text-xs text-dim">Keyword terms used: {res.info.query_terms.join(", ")}</p>}
@@ -276,6 +316,30 @@ function CompareModes({ cmp, onPick }: { cmp: Record<Mode, SearchResponse>; onPi
         ))}
       </div>
       <p className="mt-3 text-xs text-dim">Chunks found by only one retriever show where the methods differ. Which is better depends on your questions; measure it before choosing.</p>
+    </Card>
+  );
+}
+
+function StageTrace({ res }: { res: SearchResponse }) {
+  return (
+    <Card title="Pipeline stages" actions={<span className="text-xs text-dim">{res.llm_tokens ? `${res.llm_tokens} LLM tokens` : "no LLM tokens"}</span>}>
+      <ol className="space-y-2 text-sm">
+        {res.stages!.map((s) => (
+          <li key={s.stage} className="rounded-md border border-border p-2">
+            <div className="flex items-center justify-between"><span className="font-medium">{s.stage.replace("_", " ")}{s.method && s.method !== "none" ? ` · ${s.method}` : ""}</span>
+              <span className="font-mono text-xs text-dim">{s.ms} ms{s.llm_tokens ? ` · ${s.llm_tokens} tok` : ""}</span></div>
+            {s.stage === "query_transform" && s.queries && s.queries.length > 0 && (
+              <ul className="mt-1 space-y-0.5 text-xs">{s.queries.map((q, i) => (
+                <li key={i} className={q.search ? "" : "text-dim line-through"}><span className="font-mono text-dim">{q.role}{q.mode ? `/${q.mode}` : ""}:</span> {q.text.slice(0, 160)}</li>))}</ul>
+            )}
+            {s.stage === "retrieve" && s.per_query && <p className="mt-1 text-xs text-dim">{s.per_query.map((q) => `${q.role} (${q.mode}): ${q.n}`).join(" · ")}</p>}
+            {s.stage === "fuse" && <p className="mt-1 text-xs text-dim">{s.n_queries} search(es) → {s.unique_chunks} unique chunks</p>}
+            {s.stage === "mmr" && <p className="mt-1 text-xs text-dim">λ {s.lambda} · {s.changed_top_k ? "changed the top results" : "top results unchanged"}</p>}
+            {s.stage === "rerank" && <p className="mt-1 text-xs text-dim">{s.pool} candidates scored{s.warning ? ` · ${s.warning}` : ""}</p>}
+          </li>
+        ))}
+      </ol>
+      {res.warnings && res.warnings.length > 0 && <p className="mt-2 text-xs text-warn">{res.warnings.join(" ")}</p>}
     </Card>
   );
 }

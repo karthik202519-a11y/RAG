@@ -59,6 +59,63 @@ def test_text_markdown_html_csv_json_docx(client, auth, project):
     assert "| h1 | h2 |" in client.get(f"/documents/{by['f.docx']['id']}/content", headers=auth).json()["text"]
 
 
+def test_pptx_xlsx_xml(client, auth, project):
+    from openpyxl import Workbook
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    prs = Presentation()
+    s1 = prs.slides.add_slide(prs.slide_layouts[1])
+    s1.shapes.title.text = "Launch plan"
+    s1.placeholders[1].text = "Rocket integration happens in June.\nCrew training starts in March."
+    s1.notes_slide.notes_text_frame.text = "Mention the weather window."
+    s2 = prs.slides.add_slide(prs.slide_layouts[5])
+    s2.shapes.title.text = "Budget"
+    tbl = s2.shapes.add_table(2, 2, Inches(1), Inches(2), Inches(4), Inches(1)).table
+    tbl.cell(0, 0).text, tbl.cell(0, 1).text, tbl.cell(1, 0).text, tbl.cell(1, 1).text = "Item", "Cost", "Fuel", "900"
+    buf = io.BytesIO()
+    prs.save(buf)
+    r = ingest(client, auth, project["id"], "deck.pptx", buf.getvalue())
+    d = client.get(f"/documents/{r['document_id']}", headers=auth).json()["latest_version"]
+    assert d["pages"] == 2 and d["parser"] == "python_pptx" and d["table_count"] == 1  # one page per slide
+    text = client.get(f"/documents/{r['document_id']}/content", headers=auth).json()["text"]
+    assert "Rocket integration happens in June." in text and "Speaker notes: Mention the weather window." in text
+    assert "| Item | Cost |" in text
+    p2 = client.get(f"/documents/{r['document_id']}/content", headers=auth, params={"page": 2}).json()["page"]
+    assert p2["section"] == "Budget"
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Fuel"
+    ws.append(["Stage", "Tonnes"])
+    ws.append(["First", 2100])
+    ws.append([None, None])
+    wb.create_sheet("Notes").append(["Only a note"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    r = ingest(client, auth, project["id"], "book.xlsx", buf.getvalue())
+    x = client.get(f"/documents/{r['document_id']}/content", headers=auth).json()
+    assert "Sheet: Fuel" in x["text"] and "| First | 2100 |" in x["text"] and "Sheet: Notes" in x["text"] and x["pages"] == 2
+
+    xml = b'<?xml version="1.0"?><spec xmlns="urn:x"><item id="7"><name>Valve</name><limit unit="bar">12</limit></item></spec>'
+    r = ingest(client, auth, project["id"], "spec.xml", xml)
+    t = client.get(f"/documents/{r['document_id']}/content", headers=auth).json()["text"]
+    assert 'spec/item/name: Valve' in t and 'spec/item/limit [unit="bar"]: 12' in t
+
+
+def test_xml_entities_are_not_expanded_and_fake_office_files_are_rejected(client, auth, project):
+    evil = b'<?xml version="1.0"?><!DOCTYPE x [<!ENTITY secret SYSTEM "file:///etc/passwd">]><x>&secret;</x>'
+    r = upload(client, auth, project["id"], "evil.xml", evil).json()["results"][0]
+    job = wait_for_job(client, auth, r["job_id"])
+    if job["status"] == "succeeded":  # parsed without resolving the external entity
+        text = client.get(f"/documents/{r['document_id']}/content", headers=auth).json()["text"]
+        assert "root:" not in text and "passwd" not in text.lower().replace("file:///etc/passwd", "")
+    else:  # or refused outright; either is safe
+        assert job["status"] == "dead"
+    for name in ("fake.pptx", "fake.xlsx"):
+        assert upload(client, auth, project["id"], name, b"not a zip").json()["results"][0]["status"] == "rejected"
+
+
 def test_identical_upload_is_detected_as_duplicate(client, auth, project, sample_pdf):
     first = ingest(client, auth, project["id"], "x.pdf", sample_pdf)
     second = upload(client, auth, project["id"], "renamed.pdf", sample_pdf).json()["results"][0]

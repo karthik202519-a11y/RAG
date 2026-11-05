@@ -5,7 +5,7 @@ import { FileText, Trash2, UploadCloud, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner, Stat, fmt, statusTone } from "@/components/ui";
-import { API_URL, api, getToken, type Collection, type Doc, type IngestionStats, type Job } from "@/lib/api";
+import { API_URL, api, apiBlobUrl, getToken, type Collection, type Doc, type FiguresInfo, type IngestionStats, type Job } from "@/lib/api";
 import { useProject } from "@/lib/project";
 
 type UploadResult = { filename: string; status: string; error?: string; job_id?: string };
@@ -232,6 +232,55 @@ export default function IngestionPage() {
   );
 }
 
+/** Diagram and chart pages: describe them with a vision model so their content becomes searchable. */
+function Figures({ doc }: { doc: Doc }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["figures", doc.id], queryFn: () => api<FiguresInfo>(`/documents/${doc.id}/figures`), refetchInterval: (x) => (x.state.data?.pending ? 3000 : false) });
+  const [open, setOpen] = useState<number | null>(null);
+  const [img, setImg] = useState<{ page: number; url: string } | null>(null);
+  const run = useMutation({
+    mutationFn: (pages: number[] | null) => api<{ job_id: string }>(`/documents/${doc.id}/describe-figures`, { method: "POST", json: { pages } }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["figures", doc.id] }); void qc.invalidateQueries({ queryKey: ["jobs"] }); },
+  });
+  const f = q.data;
+  if (!f || f.figures.length === 0) return null;
+  const undescribed = f.figures.filter((x) => !x.described).map((x) => x.page);
+  const cur = f.figures.find((x) => x.page === open);
+  return (
+    <div className="space-y-2">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-dim">Figures ({f.figures.length} flagged · {f.described} described)</h3>
+      <p className="text-xs text-dim">Pages with many drawn shapes. Their labels and arrows are not in the text until a vision model describes them.</p>
+      <div className="flex flex-wrap gap-1">
+        {f.figures.map((x) => (
+          <button key={x.page} onClick={() => { setOpen(x.page); setImg(null); }} aria-label={`Figure page ${x.page}${x.described ? " described" : ""}`}
+            className={`rounded border px-1.5 py-0.5 font-mono text-[11px] ${open === x.page ? "border-accent bg-accent-soft" : "border-border"} ${x.described ? "text-good" : "text-dim"}`}>
+            {x.page}{x.described ? " ✓" : ""}
+          </button>
+        ))}
+      </div>
+      {cur && (
+        <div className="rounded-md border border-border p-2 text-xs">
+          {cur.described ? <p className="max-h-40 overflow-auto whitespace-pre-wrap">{cur.description}</p> : <p className="text-dim">Not described yet.</p>}
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" onClick={async () => setImg({ page: cur.page, url: await apiBlobUrl(`/documents/${doc.id}/pages/${cur.page}/image`) })}>Show page image</Button>
+            <Button size="sm" variant="primary" loading={run.isPending} disabled={!f.vision.configured} onClick={() => run.mutate([cur.page])}>{cur.described ? "Describe again" : "Describe this page"}</Button>
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {img?.page === cur.page && <img src={img.url} alt={`Rendered page ${cur.page}`} className="mt-2 max-h-72 rounded border border-border" />}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="primary" disabled={!f.vision.configured || undescribed.length === 0} loading={run.isPending}
+          onClick={() => { if (window.confirm(`Describe ${undescribed.length} page(s) with the vision model? This uses roughly 1,000 input tokens per page.`)) run.mutate(null); }}>
+          Describe {undescribed.length} remaining page{undescribed.length === 1 ? "" : "s"}
+        </Button>
+        {!f.vision.configured && <span className="text-xs text-warn">Vision model not configured: {f.vision.detail}</span>}
+      </div>
+      <ErrorBox error={run.error} />
+    </div>
+  );
+}
+
 /** Tags and custom metadata. State starts from the document; remounted per document via `key`. */
 function MetaEditor({ doc }: { doc: Doc }) {
   const qc = useQueryClient();
@@ -294,6 +343,7 @@ function DocPanel({ id, onClose }: { id: string; onClose: () => void }) {
             {doc.latest_version?.error && <div className="mt-2"><ErrorBox error={new Error(doc.latest_version.error)} /></div>}
           </div>
           <MetaEditor key={doc.id} doc={doc} />
+          {ready && <Figures key={`fig-${doc.id}`} doc={doc} />}
           <div>
             <Button variant="danger" size="sm" loading={del.isPending}
               onClick={() => { if (window.confirm(`Delete "${doc.filename}" and all its versions?`)) del.mutate(); }}><Trash2 className="size-3.5" /> Delete document</Button>

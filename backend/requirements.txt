@@ -15,8 +15,16 @@ psycopg[binary]>=3.2      # PostgreSQL (Docker profile); SQLite needs nothing
 pyjwt>=2.8
 python-dotenv>=1.0
 
+numpy>=2.0
 tiktoken>=0.9
+openai>=1.60              # Azure OpenAI (v1 route): embeddings, chat, vision
+qdrant-client>=1.12       # vector store (embedded or server)
+rank-bm25>=0.2.2          # keyword retrieval
+
+# document parsers
 python-docx>=1.1
+python-pptx>=1.0
+openpyxl>=3.1
 beautifulsoup4>=4.12
 
 # Docker profile (queue and object storage)

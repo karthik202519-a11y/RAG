@@ -110,3 +110,67 @@ def parse_csv(path: Path, doc: str) -> list[dict]:
 def parse_json(path: Path, doc: str) -> list[dict]:
     data = json.loads(_decode(path.read_bytes()))
     return [_page(doc, 1, [{"type": "text", "text": json.dumps(data, indent=2, ensure_ascii=False)}])]
+
+
+def parse_pptx(path: Path, doc: str) -> list[dict]:
+    """One page per slide, so citations point at slide numbers. Titles become the section; tables become Markdown."""
+    from pptx import Presentation
+
+    prs = Presentation(str(path))
+    pages = []
+    for n, slide in enumerate(prs.slides, 1):
+        items: list[dict] = []
+        title = slide.shapes.title.text_frame.text.strip() if slide.shapes.title is not None and slide.shapes.title.has_text_frame else None
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                t = "\n".join(p.text.strip() for p in shape.text_frame.paragraphs if p.text.strip())
+                if t and t != title:
+                    items.append({"type": "text", "text": t})
+            elif getattr(shape, "has_table", False) and shape.has_table:
+                rows = [[c.text for c in r.cells] for r in shape.table.rows]
+                if rows:
+                    items.append({"type": "table", "bbox": None, "markdown": _md_table(rows)})
+        if slide.has_notes_slide and slide.notes_slide.notes_text_frame.text.strip():
+            items.append({"type": "text", "text": "Speaker notes: " + slide.notes_slide.notes_text_frame.text.strip()})
+        if title:
+            items.insert(0, {"type": "text", "text": title})
+        pages.append(_page(doc, n, items, title))
+    return pages
+
+
+def parse_xlsx(path: Path, doc: str) -> list[dict]:
+    """One page per sheet; the used cell range becomes one Markdown table (values, not formulas)."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(str(path), read_only=True, data_only=True)
+    pages = []
+    for n, ws in enumerate(wb.worksheets, 1):
+        rows = [["" if v is None else str(v) for v in r] for r in ws.iter_rows(values_only=True)]
+        rows = [r for r in rows if any(c.strip() for c in r)]
+        items = [{"type": "text", "text": f"Sheet: {ws.title}"}]
+        if rows:
+            items.append({"type": "table", "bbox": None, "markdown": _md_table(rows)})
+        pages.append(_page(doc, n, items, ws.title))
+    wb.close()
+    return pages
+
+
+def parse_xml(path: Path, doc: str) -> list[dict]:
+    """Element text in document order, each leaf as 'path/to/element: text'. Entities are not resolved (no XXE)."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(path.read_bytes(), parser=ET.XMLParser(target=ET.TreeBuilder()))
+    items: list[dict] = []
+
+    def walk(el, trail: str) -> None:
+        tag = el.tag.split("}")[-1]
+        here = f"{trail}/{tag}" if trail else tag
+        text = (el.text or "").strip()
+        attrs = " ".join(f'{k.split("}")[-1]}="{v}"' for k, v in el.attrib.items())
+        if text:
+            items.append({"type": "text", "text": f"{here}{f' [{attrs}]' if attrs else ''}: {text}"})
+        for ch in el:
+            walk(ch, here)
+
+    walk(root, "")
+    return [_page(doc, 1, items)]

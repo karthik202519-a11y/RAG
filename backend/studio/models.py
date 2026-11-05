@@ -189,6 +189,48 @@ class RetrievalRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class EvalDataset(Base):
+    __tablename__ = "eval_datasets"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class EvalQuestion(Base):
+    """A labelled question. `evidence` lists where the answer lives as {document, pages}; `document` is a
+    document id or a filename fragment, so labels survive re-uploads and work across indexes."""
+    __tablename__ = "eval_questions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("eval_datasets.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    question: Mapped[str] = mapped_column(Text)
+    qtype: Mapped[str] = mapped_column(String(40), default="")
+    answerable: Mapped[bool] = mapped_column(default=True)
+    evidence: Mapped[list] = mapped_column(JSON, default=list)
+    keywords: Mapped[list] = mapped_column(JSON, default=list)
+    reference_answer: Mapped[str | None] = mapped_column(Text)
+    split: Mapped[str] = mapped_column(String(12), default="test")  # train | validation | test
+    approved: Mapped[bool] = mapped_column(default=True)  # generated questions need human approval
+
+
+class EvalRun(Base):
+    __tablename__ = "eval_runs"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("eval_datasets.id", ondelete="CASCADE"), index=True)
+    index_id: Mapped[str] = mapped_column(String(32), index=True)
+    index_name: Mapped[str] = mapped_column(String(200))
+    label: Mapped[str] = mapped_column(String(200), default="")
+    config: Mapped[dict] = mapped_column(JSON)  # frozen: mode, k, split, rerank ...
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|running|done|failed
+    error: Mapped[str | None] = mapped_column(Text)
+    metrics: Mapped[dict | None] = mapped_column(JSON)
+    per_question: Mapped[list | None] = mapped_column(JSON)
+    seconds: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)

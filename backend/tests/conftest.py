@@ -42,7 +42,7 @@ def client(tmp_path, monkeypatch):
     # each test gets its own embedded Qdrant folder; tests never talk to Azure or a Qdrant server
     monkeypatch.setattr(settings, "qdrant_url", "")
     monkeypatch.setattr(settings, "qdrant_path", str(tmp_path / "qdrant"))
-    for name in ("azure_endpoint", "azure_api_key", "azure_embedding_deployment"):
+    for name in ("azure_endpoint", "azure_api_key", "azure_embedding_deployment", "azure_vision_deployment"):
         monkeypatch.setattr(settings, name, "")
     from studio.vectorstores import qdrant_store
     qdrant_store.reset_client()

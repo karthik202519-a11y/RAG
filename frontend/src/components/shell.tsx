@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import {
-  BookOpen, Boxes, Database, FileStack, FlaskConical, FolderKanban, LayoutDashboard, LogOut, Moon, Scissors, Search, Sun, Wrench,
+  BookOpen, Boxes, ClipboardCheck, Database, FileStack, FlaskConical, FolderKanban, LayoutDashboard, LogOut, Moon, Scissors, ScatterChart, Search, Sun, Wrench,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -19,6 +19,8 @@ const BUILT = [
   { href: "/chunking", label: "Chunking Playground", icon: Scissors },
   { href: "/indexes", label: "Indexes & Embeddings", icon: Database },
   { href: "/retrieval", label: "Retrieval Lab", icon: Search },
+  { href: "/embeddings", label: "Embedding Explorer", icon: ScatterChart },
+  { href: "/evaluation", label: "Evaluation Center", icon: ClipboardCheck },
   { href: "/catalog", label: "Method Catalog", icon: BookOpen },
 ];
 

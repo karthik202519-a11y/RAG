@@ -96,6 +96,50 @@ export type IngestionStats = {
   jobs: Record<string, number>; estimated_ingestion_cost_usd: number;
 };
 
+export type ExploreResponse = {
+  dimension: number; sampled: number; total_chunks: number; explained_variance: number[]; method: string; warning: string;
+  points: { chunk_id: string; x: number; y: number; filename: string; chunk_index: number; type: string; pages: number[]; preview: string }[];
+};
+export type SimilarityResponse = {
+  query_norm: number; dimension: number; note: string;
+  rows: { chunk_id: string; filename: string; chunk_index: number; preview: string; cosine: number; dot: number; euclidean: number; norm: number;
+    rank_cosine: number; rank_dot: number; rank_euclidean: number }[];
+};
+export type EvalQuestion = { id: string; position: number; question: string; qtype: string; answerable: boolean;
+  evidence: { document: string; pages: number[] }[]; keywords: string[]; reference_answer: string | null; split: string; approved: boolean };
+export type EvalDatasetInfo = { id: string; name: string; description: string; questions: number; runs: number };
+export type EvalDatasetDetail = { id: string; name: string; description: string; questions: EvalQuestion[]; splits: Record<string, number>;
+  answerable: number; unanswerable: number; runs_on_test_split: number; guidance: string };
+export type MetricAgg = { mean: number | null; n: number; ci95: [number, number] | null };
+export type EvalRunInfo = {
+  id: string; label: string; index_name: string; status: string; error: string | null; seconds: number | null; created_at: string;
+  config: { mode: string; k: number; split: string; transform: string; rerank: string; mmr: boolean; with_answers: boolean };
+  job: { progress: number; stage: string | null; status: string } | null;
+  metrics: null | {
+    questions: number; answerable: number; unanswerable: number; k: number; failed_questions?: number;
+    retrieval: Record<string, MetricAgg>; by_type: Record<string, { n: number; hit: number | null; mrr: number | null; ndcg: number | null; recall: number | null }>;
+    latency_ms: { p50: number | null; p95: number | null; mean: number | null }; llm_tokens: number; notes: string[];
+    unanswerable_gate: { top1_dense_unanswerable: { min: number; max: number } | null; top1_dense_answerable: { min: number; median: number } | null;
+      sweep: { threshold: number; answerable_kept: number; unanswerable_refused: number }[] | null };
+    answers: null | { n: number; tokens: number; not_available: string[]; abstention_correct: { rate: number | null; n: number };
+      citations_resolve: { rate: number | null; n: number }; keyword_hit: { rate: number | null; n: number } };
+  };
+  per_question?: { question_id: string; question: string; qtype: string; answerable: boolean; split: string; error?: string;
+    metrics: Record<string, number | null>; latency_ms: number; top1_dense_score: number | null;
+    top: { rank: number; filename: string; pages: number[]; score: number }[] }[];
+};
+export type EvalCompare = {
+  runs: { id: string; label: string; index: string }[];
+  metrics: { metric: string; values: Partial<MetricAgg>[] }[];
+  paired_vs_first: { other: string; shared_questions: number;
+    [m: string]: unknown; changed_questions: { question_id: string; question: string; baseline_rank: number | null; other_rank: number | null; direction: string }[] }[];
+  note: string;
+};
+export type FiguresInfo = {
+  document_id: string; version_id: string; described: number; pending?: boolean;
+  figures: { page: number; has_image: boolean; described: boolean; model: string | null; description: string | null }[];
+  vision: { configured: boolean; detail: string };
+};
 export type Provider = { id: string; model: string | null; available: boolean; detail: string; semantic: boolean };
 export type Providers = {
   embedding: Provider[]; vector_stores: { id: string; available: boolean; mode: string }[];
@@ -113,6 +157,9 @@ export type Contribution = {
   dense?: { rank: number; score: number }; bm25?: { rank: number; score: number; matched_terms: string[] }; rrf?: number;
 };
 export type SearchHit = {
+  final_rank?: number; queries_found_by?: number;
+  rerank?: { score: number; before_rank: number; after_rank: number; moved: number };
+  mmr?: { relevance: number; max_similarity_to_selected: number };
   rank: number; chunk_id: string; score: number; contributions: Contribution; document_id: string; version_id: string;
   filename: string; chunk_index: number; type: "text" | "table"; section: string | null; pages: number[];
   printed_pages: (string | null)[]; start: number | null; end: number | null; tokens: number; citation: string; text: string;
@@ -129,7 +176,11 @@ export type AnswerResponse = {
     finish_reason: string | null; estimated_cost_usd: number | null } | null;
   timings_ms: Record<string, number>;
 };
+export type PipelineStage = { stage: string; ms: number; method?: string; queries?: { text: string; role: string; search: boolean; mode?: string }[];
+  llm_tokens?: number; n_queries?: number; per_query?: { query: string; role: string; mode: string; n: number }[]; unique_chunks?: number; pool?: number;
+  warning?: string | null; lambda?: number; changed_top_k?: boolean; moves?: { chunk_id: string; score: number; before_rank: number; after_rank: number }[] };
 export type SearchResponse = {
+  stages?: PipelineStage[]; llm_tokens?: number; warnings?: string[];
   query: string; mode: string; top_k: number; candidates: number; results: SearchHit[]; run_id: string;
   timings_ms: Record<string, number>;
   info: { mode: string; query_terms?: string[]; query_embedding?: {

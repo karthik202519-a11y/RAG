@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import jobs
+from .. import generation, jobs
 from ..artifacts import get_store
 from ..chunking.canon import build_canon
 from ..config import settings
@@ -25,12 +25,13 @@ router = APIRouter(tags=["documents"])
 def _magic_ok(ext: str, head: bytes, whole: bytes) -> bool:
     if ext == "pdf":
         return head.startswith(b"%PDF-")
-    if ext == "docx":
+    if ext in ("docx", "pptx", "xlsx"):
+        part = {"docx": "word/document.xml", "pptx": "ppt/presentation.xml", "xlsx": "xl/workbook.xml"}[ext]
         try:
-            return zipfile.is_zipfile(BytesIO(whole)) and "word/document.xml" in zipfile.ZipFile(BytesIO(whole)).namelist()
+            return zipfile.is_zipfile(BytesIO(whole)) and part in zipfile.ZipFile(BytesIO(whole)).namelist()
         except zipfile.BadZipFile:
             return False
-    if ext in ("txt", "md", "markdown", "csv", "json", "html", "htm"):
+    if ext in ("txt", "md", "markdown", "csv", "json", "html", "htm", "xml"):
         return b"\x00" not in head  # text formats must not contain NUL bytes
     return False
 
@@ -220,6 +221,48 @@ def page_image(document_id: str, page: int, version_id: str | None = None, user:
     if not key or not get_store().exists(key):
         raise HTTPException(404, "No rendered image for this page (only diagram/chart pages are rendered)")
     return Response(get_store().get(key), media_type="image/png")
+
+
+class DescribeIn(BaseModel):
+    pages: list[int] | None = Field(None, description="Only these PDF pages; default every flagged page")
+    model: str | None = Field(None, max_length=100, description="Vision deployment; default AZURE_OPENAI_VISION_DEPLOYMENT")
+    force: bool = Field(False, description="Describe again even if a description already exists (costs tokens)")
+
+
+@router.get("/documents/{document_id}/figures")
+def list_figures(document_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Diagram and chart pages flagged at ingestion, and which have a vision description."""
+    from ..jobs.figures_job import figure_status
+    d, ver, pages = load_pages(db, user, document_id)
+    figs = figure_status(pages)
+    pending = db.scalar(select(func.count(Job.id)).where(Job.subject_id == ver.id, Job.kind == "describe_figures",
+                                                         Job.status.in_(("queued", "running")))) or 0
+    return {"document_id": d.id, "version_id": ver.id, "figures": figs, "described": sum(f["described"] for f in figs),
+            "pending": pending > 0,
+            "vision": {"configured": generation.vision_status()[0], "detail": generation.vision_status()[1]}}
+
+
+@router.post("/documents/{document_id}/describe-figures", status_code=202)
+def describe_figures(document_id: str, body: DescribeIn = DescribeIn(), user: User = Depends(current_user),
+                     db: Session = Depends(get_db)) -> dict:
+    """Describe diagram/chart pages with a vision model (background job; costs tokens). Descriptions become searchable text."""
+    from ..jobs.figures_job import figure_status
+    d = load_document(db, user, document_id, "editor")
+    ok, why = generation.vision_status()
+    if not ok:
+        raise HTTPException(409, f"Vision model is not configured. {why}")
+    _, ver, pages = load_pages(db, user, document_id)
+    flagged = [f["page"] for f in figure_status(pages)]
+    if not flagged:
+        raise HTTPException(422, "No diagram or chart pages were flagged in this document.")
+    bad = sorted(set(body.pages or []) - set(flagged))
+    if bad:
+        raise HTTPException(422, f"Pages {bad} are not flagged as figure pages. Flagged: {flagged}")
+    job = jobs.enqueue(db, d.project_id, "describe_figures", ver.id,
+                       {"pages": body.pages, "model": body.model, "force": body.force})
+    db.add(AuditEvent(user_id=user.id, action="document.describe_figures", target=d.id, detail={"pages": body.pages or "all"}))
+    db.commit()
+    return {"job_id": job.id, "pages": body.pages or flagged, "model": body.model or generation.service.settings.azure_vision_deployment}
 
 
 @router.get("/documents/{document_id}/source")

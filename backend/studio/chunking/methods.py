@@ -9,6 +9,7 @@ from collections.abc import Callable
 
 from .canon import Canon
 from .structure import build_chunks as structure_build
+from .structure import pick_captions, scrub, table_notes
 from .tokens import count, get_encoding
 
 Cut = dict
@@ -215,8 +216,7 @@ def page_aware(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
     return cuts, []
 
 
-def structure_aware(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
-    chunks = structure_build(canon.pages, p["size"], p["overlap"])
+def _cuts_from_structure(canon: Canon, chunks: list[dict]) -> tuple[list[Cut], list[str]]:
     cuts: list[Cut] = []
     cursor, unlocated = 0, 0
     for c in chunks:
@@ -250,6 +250,60 @@ def structure_aware(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
     return cuts, warn
 
 
+def structure_aware(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
+    return _cuts_from_structure(canon, structure_build(canon.pages, p["size"], p["overlap"]))
+
+
+def _cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def table_rows(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
+    """Prose as in structure-aware; every table becomes one chunk per row (or group of rows), each repeating the
+    caption and column headers so a row can be found, and understood, on its own."""
+    prose_pages = [{**pg, "items": [i for i in pg["items"] if i["type"] != "table"]} for pg in canon.pages]
+    cuts, warn = _cuts_from_structure(canon, structure_build(prose_pages, p["size"], p["overlap"]))
+    per, fmt = p["rows_per_chunk"], p["row_format"]
+    last: tuple[int, str, str | None] | None = None  # (page, header line, caption) of the previous table
+    n_rows = 0
+    for pg in canon.pages:
+        caps = pick_captions(pg["items"])
+        for k, item in enumerate(pg["items"]):
+            if item["type"] != "table":
+                continue
+            md = scrub(item["markdown"])
+            lines = md.split("\n")
+            if len(lines) < 3:
+                continue
+            header, rows = lines[0], [r for r in lines[2:] if any(c for c in _cells(r))]
+            caption = caps.get(k)
+            if not caption and last and last[0] == pg["pdf_page"] - 1 and last[1] == header:
+                caption = last[2]  # the same header on the next page: a continued table
+            last = (pg["pdf_page"], header, caption)
+            notes = scrub(table_notes(pg["items"], k))
+            heads = _cells(header)
+            base = canon.text.find(md)
+            section = pg.get("section")
+            for g in range(0, len(rows), per):
+                grp = rows[g:g + per]
+                if fmt == "key_value":
+                    body = "\n".join("; ".join(f"{h}: {v}" for h, v in zip(heads, _cells(r)) if v and h) for r in grp)
+                    text = (f"{scrub(caption)}\n" if caption else "") + body
+                else:
+                    text = (f"{scrub(caption)}\n" if caption else "") + header + "\n|" + "---|" * len(heads) + "\n" + "\n".join(grp)
+                if notes:
+                    text += "\n" + notes
+                s0 = canon.text.find(grp[0], max(base, 0)) if base >= 0 else -1
+                e0 = (canon.text.find(grp[-1], s0) + len(grp[-1])) if s0 >= 0 else -1
+                cuts.append({"start": s0 if s0 >= 0 and e0 > s0 else None, "end": e0 if s0 >= 0 and e0 > s0 else None,
+                             "text": text, "type": "table", "pages": [pg["pdf_page"]], "section": section})
+                n_rows += len(grp)
+    cuts.sort(key=lambda c: (min(c.get("pages") or [10**9]), c["start"] if c["start"] is not None else 0))
+    if n_rows == 0:
+        warn.append("No tables in this document, so this behaves like Structure-aware chunking.")
+    return cuts, warn
+
+
 METHODS: dict[str, Callable[[Canon, dict], tuple[list[Cut], list[str]]]] = {
     "fixed_char": fixed_char,
     "fixed_token": fixed_token,
@@ -260,4 +314,5 @@ METHODS: dict[str, Callable[[Canon, dict], tuple[list[Cut], list[str]]]] = {
     "markdown_header": markdown_header,
     "page_aware": page_aware,
     "structure_aware": structure_aware,
+    "table_rows": table_rows,
 }

@@ -193,6 +193,33 @@ registry.register(MethodSpec(
     compare_with=["recursive", "paragraph", "page_aware"],
     recommended_experiment="Compare with Recursive on a PDF with tables, looking at table chunks and captions."))
 
+registry.register(MethodSpec(
+    id="table_rows", category=C, stage=STAGE, name="Table-aware (row-level)",
+    summary="Prose as usual, but each table row becomes its own chunk that repeats the table caption and column headers.",
+    how_it_works="Tables are split into one chunk per row (or `rows_per_chunk` rows). Each chunk carries the table caption, the header "
+                 "row, and any Note/Source lines, either as a mini Markdown table or as 'Header: value' pairs. A table continued on the "
+                 "next page keeps its caption. Prose uses the structure-aware chunker. A search for one cell then competes against "
+                 "a single row instead of a whole grid.",
+    advantages=["A question about one row or cell can match that row directly", "Headers and caption stay with every row",
+                "Chunks stay small, so answers can quote them"],
+    disadvantages=["Many more, smaller vectors for table-heavy documents", "A row on its own loses the comparison with its neighbours",
+                   "Merged or blank header cells give weaker column labels"],
+    suitable_documents=["Handbooks and reports with large reference tables", "Spec sheets, matrices"],
+    use_cases=["Lookups such as 'what is the entrance criterion for X review'"],
+    params=[size_param("tokens", 400, 50, 2000), overlap_param("tokens", 50, 1000),
+            ParamSpec(name="rows_per_chunk", label="Rows per chunk", type="int", default=1, min=1, max=50, unit="rows",
+                      help="1 = one row per chunk. Larger groups keep neighbouring rows together."),
+            ParamSpec(name="row_format", label="Row format", type="select", default="markdown", options=["markdown", "key_value"],
+                      help="markdown keeps a mini table; key_value writes 'Header: value; ...' which reads like a sentence.")],
+    inputs=["parsed pages (blocks and tables)"], outputs=["text chunks and one chunk per table row"],
+    requires=["a parser that detects tables (PyMuPDF, DOCX, HTML, CSV)"],
+    performance_notes="Near linear; the vector count grows with the number of table rows.",
+    cost_notes="More chunks to embed than whole-table chunking.",
+    limitations=["Blank header cells (merged headers) become unlabeled columns in key_value format",
+                 "Tables detected wrongly by the parser are split wrongly too"],
+    compare_with=["structure_aware"],
+    recommended_experiment="Index a table-heavy document with Structure-aware and with this method, then ask a question about one row and compare the top result."))
+
 # ---------------------------------------------------------------- planned (not executable yet)
 _planned("overlapping", "Overlapping chunking (preset)",
          "Any size-based method with overlap > 0.",
@@ -234,11 +261,6 @@ _planned("layout_aware", "Layout-aware", "Use reading order, columns and block t
          "Needs a layout-analysis parser (Docling, Unstructured, cloud document AI).",
          ["Handles multi-column and complex pages"], ["Needs a layout parser"],
          "Planned (Stage 5). Only the PyMuPDF parser exists.", requires=["layout parser"])
-_planned("table_aware", "Table-aware", "Chunk tables as tables: whole, by rows, or by row groups.",
-         "Keeps header-row associations, with row-level chunking for large tables.",
-         ["Preserves header/value relationships"], ["Needs table extraction"],
-         "Whole-table handling exists inside Structure-aware; row-level table chunking arrives with the Table RAG "
-         "Lab (Stage 5).")
 _planned("code_aware", "Code-aware (tree-sitter)", "Cut at functions and classes using a syntax parser.",
          "Parse source with tree-sitter and split at definition boundaries.",
          ["Chunks are whole functions"], ["Per-language grammars"],

@@ -12,7 +12,7 @@ def test_catalog_lists_methods_with_honest_status(client):
     ids = {m["id"]: m for m in cat["items"]}
     assert ids["fixed_token"]["status"] == "implemented" and ids["fixed_token"]["params"]
     assert ids["semantic"]["status"] == "unavailable" and ids["semantic"]["unavailable_reason"]
-    assert cat["counts"]["implemented"] == 9 and cat["counts"]["unavailable"] >= 10
+    assert cat["counts"]["implemented"] == 10 and cat["counts"]["unavailable"] >= 10
     assert client.get("/method-catalog/recursive").json()["advantages"]
     assert client.get("/method-catalog/nope").status_code == 404
     only = client.get("/method-catalog", params={"category": "parser", "status": "implemented"}).json()["items"]

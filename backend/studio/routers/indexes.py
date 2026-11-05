@@ -14,7 +14,7 @@ from ..config import settings
 from ..db import get_db
 from ..embeddings import PROVIDERS, ProviderError, embed_texts, get_provider
 from ..models import AuditEvent, Document, DocumentVersion, Index, IndexChunk, Job, RetrievalRun, User
-from ..retrieval import DimensionMismatch
+from ..retrieval import DimensionMismatch, pipeline
 from ..security import current_user, get_project
 from ..vectorstores import qdrant_store
 
@@ -33,7 +33,9 @@ def list_providers(user: User = Depends(current_user)) -> dict:
     return {"embedding": emb,
             "vector_stores": [{"id": "qdrant", "available": True, "mode": qdrant_store.mode()}],
             "generation": {"configured": generation.generation_status()[0], "detail": generation.generation_status()[1],
-                           "default_model": settings.azure_chat_deployment or None, "models": generation.configured_models()}}
+                           "default_model": settings.azure_chat_deployment or None, "models": generation.configured_models()},
+            "vision": {"configured": generation.vision_status()[0], "detail": generation.vision_status()[1],
+                       "model": settings.azure_vision_deployment or None}}
 
 
 @router.post("/providers/{provider_id}/test")
@@ -217,6 +219,51 @@ def search_index(index_id: str, body: SearchIn, user: User = Depends(current_use
     except ValueError as e:
         raise HTTPException(409, str(e)) from None
     run = RetrievalRun(index_id=i.id, user_id=user.id, query=body.query, mode=body.mode,
+                       params=body.model_dump(exclude={"query"}), result_ids=[r["chunk_id"] for r in out["results"]],
+                       timings_ms=out["timings_ms"])
+    db.add(run)
+    db.commit()
+    out["run_id"] = run.id
+    return out
+
+
+class RetrieveIn(BaseModel):
+    query: str = Field(min_length=1, max_length=4000)
+    mode: Literal["dense", "bm25", "hybrid"] = "dense"
+    top_k: int = Field(5, ge=1, le=50)
+    transform: Literal["none", "rewrite", "multi_query", "hyde", "decompose"] = "none"
+    n_queries: int = Field(3, ge=1, le=6)
+    mmr: bool = False
+    mmr_lambda: float = Field(0.6, ge=0.0, le=1.0, description="1 = pure relevance, 0 = pure diversity")
+    rerank: Literal["none", "llm"] = "none"
+    rerank_candidates: int = Field(20, ge=2, le=50)
+    llm_model: str | None = Field(None, max_length=100)
+    document_ids: list[str] | None = None
+    types: list[Literal["text", "table"]] | None = None
+    score_threshold: float | None = None
+    rrf_k: int = Field(60, ge=1, le=1000)
+
+
+@router.post("/indexes/{index_id}/retrieve")
+def retrieve_pipeline(index_id: str, body: RetrieveIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Multi-stage retrieval: optional query transformation, retrieval, fusion, MMR and LLM reranking, each reported as a stage."""
+    i = load_index(db, user, index_id)
+    if i.status != "ready":
+        raise HTTPException(409, f"Index is {i.status}; it can be searched once it is ready")
+    try:
+        out = pipeline.run(db, i, body.query, mode=body.mode, top_k=body.top_k, transform=body.transform, n_queries=body.n_queries,
+                           mmr_on=body.mmr, mmr_lambda=body.mmr_lambda, rerank=body.rerank, rerank_candidates=body.rerank_candidates,
+                           llm_model=body.llm_model, document_ids=body.document_ids, types=body.types,
+                           score_threshold=body.score_threshold, rrf_k=body.rrf_k)
+    except generation.GenerationNotConfigured as e:
+        raise HTTPException(409, f"This option needs the chat model, which is not configured. {e}") from None
+    except DimensionMismatch as e:
+        raise HTTPException(409, str(e)) from None
+    except (generation.GenerationError, ProviderError) as e:
+        raise HTTPException(502, str(e)) from None
+    except (pipeline.PipelineError, ValueError) as e:
+        raise HTTPException(422, str(e)) from None
+    run = RetrievalRun(index_id=i.id, user_id=user.id, query=body.query, mode=f"pipeline:{body.mode}",
                        params=body.model_dump(exclude={"query"}), result_ids=[r["chunk_id"] for r in out["results"]],
                        timings_ms=out["timings_ms"])
     db.add(run)

@@ -7,6 +7,7 @@ from . import textlike
 SUPPORTED: dict[str, str] = {
     "pdf": "pymupdf", "txt": "plain_text", "md": "markdown", "markdown": "markdown",
     "docx": "python_docx", "html": "html_bs4", "htm": "html_bs4", "csv": "csv", "json": "json",
+    "pptx": "python_pptx", "xlsx": "openpyxl", "xml": "xml_etree",
 }
 
 
@@ -34,6 +35,9 @@ def parse_file(path: Path, ext: str, doc_name: str, img_dir: Path | None = None,
         "html_bs4": lambda: textlike.parse_html(path, doc_name),
         "csv": lambda: textlike.parse_csv(path, doc_name),
         "json": lambda: textlike.parse_json(path, doc_name),
+        "python_pptx": lambda: textlike.parse_pptx(path, doc_name),
+        "openpyxl": lambda: textlike.parse_xlsx(path, doc_name),
+        "xml_etree": lambda: textlike.parse_xml(path, doc_name),
     }[parser]()
     if progress:
         progress(len(pages), len(pages))

@@ -13,7 +13,7 @@ from . import __version__, jobs
 from . import db as dbmod
 from .config import settings
 from .registry import registry
-from .routers import auth, catalog, chunking_api, documents, indexes, jobs_api, projects
+from .routers import auth, catalog, chunking_api, documents, evaluation, explorer, indexes, jobs_api, projects
 
 log = logging.getLogger("studio")
 
@@ -44,7 +44,7 @@ app = FastAPI(title="RAG Learning Studio", version=__version__, lifespan=lifespa
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
                    allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 for r in (auth.router, projects.router, documents.router, jobs_api.router, catalog.router, chunking_api.router,
-          indexes.router):
+          indexes.router, explorer.router, evaluation.router):
     app.include_router(r)
 
 

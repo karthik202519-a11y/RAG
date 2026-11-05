@@ -135,3 +135,33 @@ for _id, _n, _why in [
     ("graph_retrieval", "Graph-assisted retrieval", "Planned (Stage 5)."),
 ]:
     _na(_id, "retrieval", "Retrieval", _n, f"{_n}.", _why)
+
+
+# ------------------------------------------------------------------------ multimodal
+registry.register(MethodSpec(
+    id="vision_describe_page", category="multimodal", stage="Visual content", name="Vision description of figure pages",
+    summary="A vision model reads each diagram or chart page and writes a description that becomes searchable text.",
+    how_it_works="Pages flagged at ingestion (many vector drawings) are rendered to PNG. Each image is sent to a vision-capable "
+                 "deployment with a prompt asking for the title, every label, relationships between elements, axes, units, and "
+                 "readable values. The description is stored in the page as a text item starting '[Figure description, page N]', so "
+                 "every chunker and index can use it. Progress is saved per page, so a cancel or crash repeats nothing paid.",
+    advantages=["Makes diagrams and charts searchable by their content", "Works with any chunker", "Checkpointed and retryable"],
+    disadvantages=["Costs vision tokens per page", "The model can misread dense charts or invent structure; descriptions are not verified",
+                   "Works on whole pages, not on cropped figures"],
+    needs_cloud_credentials=True, status="requires_credentials",
+    requires=["AZURE_OPENAI_VISION_DEPLOYMENT (a vision-capable deployment such as gpt-4o)"],
+    params=[ParamSpec(name="pages", label="Pages", type="text", default=None, help="Only these flagged pages; empty = all."),
+            ParamSpec(name="force", label="Describe again", type="bool", default=False, help="Replace existing descriptions.")],
+    cost_notes="Roughly 1k input tokens per page plus the description; a 29-page handbook subset costs a few cents to tens of cents.",
+    limitations=["Page-level, not figure-level: descriptions mix every figure on the page", "Values read from charts are approximate",
+                 "Page detection uses drawing counts and misses figures built from embedded images"],
+    compare_with=["ocr_tesseract", "clip_embeddings"],
+    recommended_experiment="Describe the flagged pages, index with and without them, and ask a question whose answer is only in a diagram."))
+for _id, _n, _why in [
+    ("ocr_tesseract", "OCR (Tesseract / PaddleOCR)", "Planned (Stage 5); scanned PDFs are unsupported until OCR exists."),
+    ("figure_crop", "Figure-region crop + description", "Planned (Stage 5); needs figure detection."),
+    ("clip_embeddings", "CLIP / SigLIP image embeddings", "Planned (Stage 5)."),
+    ("page_image_retrieval", "Page-screenshot retrieval (ColPali-style)", "Planned (Stage 5)."),
+    ("chart_to_table", "Chart to data table", "Planned (Stage 5)."),
+]:
+    _na(_id, "multimodal", "Visual content", _n, f"{_n}.", _why)
