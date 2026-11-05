@@ -125,9 +125,23 @@ page-hit metrics (the diagram pages were already retrieved) but changed an answe
 - Frontend image is 1.9 GB; API image is 850 MB.
 - Only `gpt-4o-mini` and `gpt-4o` were exercised end to end; `gpt-5` models need a larger output-token limit.
 
+## Latest slice: every method, suggestions, scale test
+
+- All 23 chunking methods run (11 added), the parser choice on upload (pdfplumber, local OCR, Azure Document Intelligence), 5 vector stores, 8 embedding providers, a local cross-encoder, 5 chat providers, and the Visual Lab (figure crops, chart-to-table, CLIP page search).
+- Suggestions page and per-document suggestion chip: a pick per stage, with reasons and numbers, labelled Measured / Rule / Starting point.
+- Scale test on real files (docs/SCALE_TEST.md): chunking on up to 8.4M characters, end-to-end at 10,000 characters. **Not run at 1M+ end to end**, by request.
+- Bugs found by the work: chunk highlights covered only a fragment of blocks with internal line breaks (JSON, Markdown); fixed with a regression test. The 1M chunking run reported 2 failed documents for structure-aware and table-rows that did not recur and whose cause is unknown.
+- The registry had stale "planned" entries for things that already existed (MMR, HyDE, parent-document, vision ...); all corrected. 16 of 91 methods remain unavailable, each with its reason.
+
+### Known limits (added)
+
+- Hosted-service adapters (OpenAI, Anthropic, Gemini, Cohere, Voyage, Ollama, Azure Document Intelligence) are tested against recorded responses, not live services.
+- Semantic chunking with the local embedder ran at 5 to 11 sentences per second on this CPU, so it is impractical at millions of characters without a GPU or a hosted embedder.
+- The Suggestions page's "Measured" label needs 10+ evaluation questions and a gap outside the confidence interval; with fewer it falls back to rules and says so.
+
 ## Next slices (in order)
 
 1. Run the evaluation grid on the handbook to compare plain, contextual, row-level-table, semantic and parent-child indexes, and FAISS against Qdrant; add UI controls for parent/neighbour expansion.
-2. Investigate PyMuPDF missing tables that pdfplumber finds; consider a parser option at ingestion.
-3. pgvector and other vector stores, Docling and OCR parsers, global GraphRAG search, visual pipeline builder.
+2. Investigate why PyMuPDF missed tables on handbook pages where pdfplumber found them (the parser option now exists on upload).
+3. Run the end-to-end scale test at 1M, 3M and 10M characters, Milvus/Weaviate/Elasticsearch stores, Docling, global GraphRAG search, visual pipeline builder.
 4. The 10,000-document load test, OpenTelemetry export, rate limits and a security review.

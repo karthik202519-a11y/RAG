@@ -201,7 +201,7 @@ function RunForm({ id, pid, onStarted, disabled }: { id: string; pid: string; on
           <Field label="Top k"><Input type="number" min={1} max={50} value={f.k} onChange={(e) => setF({ ...f, k: Number(e.target.value) })} aria-label="k" /></Field>
           <Field label="Split" hint="Tune on train/validation; use test once."><Select value={f.split} onChange={(e) => setF({ ...f, split: e.target.value })} aria-label="Split"><option value="all">All</option><option value="train">Train</option><option value="validation">Validation</option><option value="test">Test</option></Select></Field>
           <Field label="Query transform"><Select value={f.transform} onChange={(e) => setF({ ...f, transform: e.target.value })} aria-label="Query transform"><option value="none">None</option><option value="rewrite">Rewrite</option><option value="multi_query">Multi-query</option><option value="hyde">HyDE</option><option value="decompose">Decompose</option></Select></Field>
-          <Field label="Reranking"><Select value={f.rerank} onChange={(e) => setF({ ...f, rerank: e.target.value })} aria-label="Reranking"><option value="none">None</option><option value="llm">LLM</option></Select></Field>
+          <Field label="Reranking"><Select value={f.rerank} onChange={(e) => setF({ ...f, rerank: e.target.value })} aria-label="Reranking"><option value="none">None</option><option value="cross_encoder">Cross-encoder (local)</option><option value="llm">LLM</option></Select></Field>
           <Field label="Label (optional)"><Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="e.g. hybrid + rerank" /></Field>
           <div className="flex flex-col justify-end gap-1">
             <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={f.mmr} onChange={(e) => setF({ ...f, mmr: e.target.checked })} /> MMR diversity</label>
@@ -252,7 +252,7 @@ function GridForm({ id, pid, onStarted, disabled }: { id: string; pid: string; o
             <fieldset><legend className="mb-1 text-xs font-medium text-dim">Top k</legend>
               <div className="flex gap-3">{[1, 3, 5, 10].map((k) => <label key={k} className={box}><input type="checkbox" checked={ks.includes(k)} onChange={() => setKs(toggleIn(ks, k))} />{k}</label>)}</div></fieldset>
             <fieldset><legend className="mb-1 text-xs font-medium text-dim">Reranking</legend>
-              <div className="flex gap-3">{[["none", "none"], ["llm", "LLM (spends tokens)"]].map(([v, l]) => <label key={v} className={box}><input type="checkbox" checked={rerank.includes(v)} onChange={() => setRerank(toggleIn(rerank, v))} />{l}</label>)}</div></fieldset>
+              <div className="flex gap-3">{[["none", "none"], ["cross_encoder", "cross-encoder (local)"], ["llm", "LLM (spends tokens)"]].map(([v, l]) => <label key={v} className={box}><input type="checkbox" checked={rerank.includes(v)} onChange={() => setRerank(toggleIn(rerank, v))} />{l}</label>)}</div></fieldset>
             <Field label="Split"><Select value={split} onChange={(e) => setSplit(e.target.value)} aria-label="Grid split"><option value="all">All</option><option value="train">Train</option><option value="validation">Validation</option><option value="test">Test</option></Select></Field>
           </div>
           <ErrorBox error={start.error} />

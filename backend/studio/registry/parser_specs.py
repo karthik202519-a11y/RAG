@@ -62,6 +62,11 @@ _p("pypdf", "pypdf", "Reads digital PDFs in pure Python. Comparison lab only.",
    ["Pure Python, tiny dependency"], ["No tables", "Reading order can interleave columns"], ["pdf"], docs=["Simple digital PDFs"],
    requires=["pypdf"])
 
+_p("source_code", "Source code", "Reads source files (Python, JavaScript, TypeScript, Java, Go, Rust, C/C++, C#, Ruby, PHP, shell, SQL, Kotlin, Swift) as one exact text block.",
+   "Decodes the file and keeps it verbatim, with indentation and blank lines, as a single block tagged 'code', so code-aware chunking can cut at functions and classes.",
+   ["Exact text, nothing lost", "Works with code-aware chunking"], ["No syntax tree is stored at parse time", "Binary and minified files are not useful"],
+   sorted(__import__("studio.parsing.textlike", fromlist=["CODE_EXTS"]).CODE_EXTS), docs=["Source code"])
+
 _NA = {
     "docling": ("Docling (layout-aware)", "Planned (Stage 5); needs the docling package and models."),
     "unstructured": ("Unstructured", "Planned (Stage 5)."),

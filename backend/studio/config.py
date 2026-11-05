@@ -53,6 +53,28 @@ class Settings:
     azure_endpoint: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
     azure_api_key: str = os.getenv("AZURE_OPENAI_API_KEY", "")
     azure_embedding_deployment: str = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "")
+    # Other providers. All optional; each shows as "not configured" until its setting is present.
+    fastembed_model: str = os.getenv("FASTEMBED_MODEL", "BAAI/bge-small-en-v1.5")      # local ONNX embeddings, no key
+    fastembed_rerank_model: str = os.getenv("FASTEMBED_RERANK_MODEL", "Xenova/ms-marco-MiniLM-L-6-v2")
+    fastembed_clip_text: str = os.getenv("FASTEMBED_CLIP_TEXT_MODEL", "Qdrant/clip-ViT-B-32-text")
+    fastembed_clip_image: str = os.getenv("FASTEMBED_CLIP_IMAGE_MODEL", "Qdrant/clip-ViT-B-32-vision")
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_embedding_model: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    openai_chat_model: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+    cohere_api_key: str = os.getenv("COHERE_API_KEY", "")
+    cohere_embedding_model: str = os.getenv("COHERE_EMBEDDING_MODEL", "embed-english-v3.0")
+    voyage_api_key: str = os.getenv("VOYAGE_API_KEY", "")
+    voyage_embedding_model: str = os.getenv("VOYAGE_EMBEDDING_MODEL", "voyage-3")
+    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    anthropic_chat_model: str = os.getenv("ANTHROPIC_CHAT_MODEL", "claude-haiku-4-5")
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_chat_model: str = os.getenv("GEMINI_CHAT_MODEL", "gemini-2.0-flash")
+    ollama_url: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+    ollama_chat_model: str = os.getenv("OLLAMA_CHAT_MODEL", "llama3.2")
+    pgvector_url: str = os.getenv("PGVECTOR_URL", "")  # postgresql://user:pass@host:port/db with the vector extension available
+    azure_di_endpoint: str = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "")
+    azure_di_key: str = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "")
 
     def __post_init__(self) -> None:
         self.data_dir = Path(self.data_dir)

@@ -43,9 +43,9 @@ def test_defaults_are_valid(method):
     assert set(params) == {p.name for p in spec.params}
 
 
-def test_unavailable_method_cannot_run():
+def test_unavailable_method_cannot_run(future_method):
     with pytest.raises(ChunkingError, match="not available"):
-        validate_params("topic_based", {})
+        validate_params(future_method, {})
 
 
 def test_unknown_method_and_params_are_rejected():

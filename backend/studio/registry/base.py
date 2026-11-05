@@ -59,8 +59,8 @@ class Registry:
     def __init__(self) -> None:
         self._methods: dict[str, MethodSpec] = {}
 
-    def register(self, spec: MethodSpec) -> MethodSpec:
-        if spec.id in self._methods:
+    def register(self, spec: MethodSpec, replace: bool = False) -> MethodSpec:
+        if spec.id in self._methods and not replace:
             raise ValueError(f"duplicate method id {spec.id}")
         if spec.status == "unavailable" and not spec.unavailable_reason:
             raise ValueError(f"{spec.id}: unavailable methods must say why")

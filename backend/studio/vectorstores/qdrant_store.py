@@ -47,6 +47,10 @@ def mode() -> str:
     return "server" if settings.qdrant_url else "embedded"
 
 
+def status() -> tuple[bool, str]:
+    return True, f"{mode()} (HNSW)"
+
+
 def create_collection(name: str, dim: int, metric: str = "cosine") -> None:
     c = client()
     if c.collection_exists(name):
@@ -73,7 +77,10 @@ def search(name: str, vector: np.ndarray, limit: int, document_ids: list[str] | 
 
 
 def count(name: str) -> int:
-    return client().count(name, exact=True).count
+    try:
+        return client().count(name, exact=True).count
+    except ValueError:  # embedded Qdrant raises for a collection that does not exist
+        return 0
 
 
 def collection_dim(name: str) -> int | None:

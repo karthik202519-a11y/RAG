@@ -46,6 +46,10 @@ def mode() -> str:
     return "exact (flat), in-process"
 
 
+def status() -> tuple[bool, str]:
+    return True, mode()
+
+
 def _load(name: str) -> "_Coll | None":
     with _lock:
         if name in _cache:

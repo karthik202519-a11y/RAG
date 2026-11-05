@@ -28,7 +28,7 @@ class PipelineError(RuntimeError):
 
 
 def _llm(model: str | None, system: str, user: str, max_tokens: int = 400) -> tuple[str, int]:
-    ok, why = gen.generation_status()
+    ok, why = gen.status_for(model or gen.settings.azure_chat_deployment)
     if not ok:
         raise gen_pkg.GenerationNotConfigured(why)
     res = gen.chat_complete(model or gen.settings.azure_chat_deployment,
@@ -192,15 +192,19 @@ def run(db: Session, index: Index, question: str, *, mode: str = "dense", top_k:
 
     # 5. optional reranking of the candidate pool
     warnings: list[str] = []
-    if rerank == "llm" and fused:
+    if rerank in ("llm", "cross_encoder") and fused:
         t0 = time.perf_counter()
         pool = fused[:max(top_k, rerank_candidates)]
-        reranked, tok, warn = rerank_llm(question, pool, llm_model)
+        if rerank == "llm":
+            reranked, tok, warn = rerank_llm(question, pool, llm_model)
+        else:
+            from .rerank_local import rerank_cross_encoder
+            (reranked, warn), tok = rerank_cross_encoder(question, pool), 0
         llm_tokens += tok
         if warn:
             warnings.append(warn)
         fused = reranked + fused[len(pool):]
-        stages.append({"stage": "rerank", "method": "llm", "pool": len(pool), "llm_tokens": tok, "warning": warn,
+        stages.append({"stage": "rerank", "method": rerank, "pool": len(pool), "llm_tokens": tok, "warning": warn,
                        "moves": [{"chunk_id": h["chunk_id"], **h["rerank"]} for h in reranked[:top_k] if "rerank" in h],
                        "ms": round((time.perf_counter() - t0) * 1000, 1)})
 

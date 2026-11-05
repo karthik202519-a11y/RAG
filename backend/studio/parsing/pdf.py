@@ -74,6 +74,17 @@ def running_lines(doc: pymupdf.Document) -> set[str]:
     return {t for t, n in counts.items() if n > 0.3 * len(doc) and not t.isdigit() and len(t) < 80}
 
 
+def _block_fonts(page: pymupdf.Page) -> dict[int, float]:
+    """Median font size of each text block, keyed by block number, so layout-aware chunking can tell headings from body."""
+    out: dict[int, float] = {}
+    for blk in page.get_text("dict").get("blocks", []):
+        sizes = [sp["size"] for ln in blk.get("lines", []) for sp in ln.get("spans", []) if sp.get("text", "").strip()]
+        if sizes:
+            sizes.sort()
+            out[blk["number"]] = round(sizes[len(sizes) // 2], 1)
+    return out
+
+
 def extract_page(doc_name: str, page: pymupdf.Page, running: set[str], img_dir: Path) -> dict:
     tables = page.find_tables().tables
     table_rects = [pymupdf.Rect(t.bbox) for t in tables]
@@ -81,6 +92,7 @@ def extract_page(doc_name: str, page: pymupdf.Page, running: set[str], img_dir: 
     # No sort=True: it sorts top-to-bottom and interleaves two-column pages.
     # The PDF's own content order was correct on every page we checked.
     blocks = [b for b in page.get_text("blocks") if b[6] == 0]
+    fonts = _block_fonts(page)
     printed_page = None
     section = None
     items: list[dict] = []
@@ -105,7 +117,8 @@ def extract_page(doc_name: str, page: pymupdf.Page, running: set[str], img_dir: 
             continue
         if any(inside(rect, tr) for tr in table_rects):
             continue
-        items.append({"type": "text", "text": text.replace("\n", " ")})
+        items.append({"type": "text", "text": text.replace("\n", " "), "bbox": [round(v) for v in b[:4]],
+                      "font": fonts.get(b[5])})
 
     for t in tables:
         md = table_to_markdown(page, t)

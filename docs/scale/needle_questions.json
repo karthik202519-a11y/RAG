@@ -1,0 +1,444 @@
+[
+ {
+  "question": "What is the default maximum number of log files to store?",
+  "qtype": "web",
+  "evidence": [
+   {
+    "document": "00003_config.html",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "logs-max"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is a contributor's 'essential patent claims'?",
+  "qtype": "prose",
+  "evidence": [
+   {
+    "document": "00000_LICENSE.txt",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "essential patent claims"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the license type for OpenBLAS as mentioned in the document?",
+  "qtype": "prose",
+  "evidence": [
+   {
+    "document": "00000_LICENSE.txt",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "BSD-3-Clause"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the default value for the install-strategy option?",
+  "qtype": "web",
+  "evidence": [
+   {
+    "document": "00003_config.html",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "hoisted"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What must be provided along with the Corresponding Source when conveying an object code work for a User Product?",
+  "qtype": "prose",
+  "evidence": [
+   {
+    "document": "00000_LICENSE.txt",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "Installation Information"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the default value for the sbom-format configuration?",
+  "qtype": "web",
+  "evidence": [
+   {
+    "document": "00003_config.html",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "null"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What happens if there is no bin entry in local packages or in the tree?",
+  "qtype": "code",
+  "evidence": [
+   {
+    "document": "00001_index.js",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "args[0]"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the default value for the workspaces-update configuration?",
+  "qtype": "web",
+  "evidence": [
+   {
+    "document": "00003_config.html",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "true"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the default value for the viewer setting on Windows?",
+  "qtype": "web",
+  "evidence": [
+   {
+    "document": "00003_config.html",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "browser"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What new errors were added in version 1.3.0?",
+  "qtype": "docs",
+  "evidence": [
+   {
+    "document": "00004_CHANGELOG.md",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "EvalError"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the length of the needInstall array that triggers the installation process?",
+  "qtype": "code",
+  "evidence": [
+   {
+    "document": "00001_index.js",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "needInstall.length"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What does the Corresponding Source include for a work in object code form?",
+  "qtype": "prose",
+  "evidence": [
+   {
+    "document": "00000_LICENSE.txt",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "Corresponding Source"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the default value for the 'minTimeout' config in the retry module?",
+  "qtype": "web",
+  "evidence": [
+   {
+    "document": "00003_config.html",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "300000"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What command can be used to see a set of configuration parameters that are internal to npm?",
+  "qtype": "web",
+  "evidence": [
+   {
+    "document": "00003_config.html",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "npm config ls -l"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the purpose of resolving directory specs in the code?",
+  "qtype": "code",
+  "evidence": [
+   {
+    "document": "00001_index.js",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "npx"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What happens if the user cancels the process due to missing packages and the YES option is not set?",
+  "qtype": "code",
+  "evidence": [
+   {
+    "document": "00001_index.js",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "Error message"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What date must an arrangement or patent license be granted prior to in order to avoid restrictions on conveying a covered work?",
+  "qtype": "prose",
+  "evidence": [
+   {
+    "document": "00000_LICENSE.txt",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "28 March 2007"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is prohibited when conveying covered works to others for modifications?",
+  "qtype": "prose",
+  "evidence": [
+   {
+    "document": "00000_LICENSE.txt",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "sublicensing"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the default value for init.version?",
+  "qtype": "web",
+  "evidence": [
+   {
+    "document": "00003_config.html",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "1.0.0"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the extent of the warranty for the Program as stated in the document?",
+  "qtype": "prose",
+  "evidence": [
+   {
+    "document": "00000_LICENSE.txt",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "15"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What should be checked if a range is provided and not a tag?",
+  "qtype": "code",
+  "evidence": [
+   {
+    "document": "00001_index.js",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "outdated"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What must you do if the Corresponding Source of a covered work is not available for anyone to copy free of charge?",
+  "qtype": "prose",
+  "evidence": [
+   {
+    "document": "00000_LICENSE.txt",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "Corresponding Source"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the default value for the scriptShell variable when the operating system is not Windows?",
+  "qtype": "code",
+  "evidence": [
+   {
+    "document": "00001_index.js",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "sh"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the commit identifier for the addition of the base Error?",
+  "qtype": "docs",
+  "evidence": [
+   {
+    "document": "00004_CHANGELOG.md",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "2983ab6"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What is the purpose of the 'manifests' map in the code?",
+  "qtype": "code",
+  "evidence": [
+   {
+    "document": "00001_index.js",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "manifests"
+  ],
+  "answerable": true,
+  "split": "test"
+ },
+ {
+  "question": "What happens if the package is installed globally and the global tree is successfully loaded?",
+  "qtype": "code",
+  "evidence": [
+   {
+    "document": "00001_index.js",
+    "pages": [
+     1
+    ]
+   }
+  ],
+  "keywords": [
+   "globalTree"
+  ],
+  "answerable": true,
+  "split": "test"
+ }
+]

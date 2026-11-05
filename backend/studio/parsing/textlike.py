@@ -96,8 +96,21 @@ def parse_html(path: Path, doc: str) -> list[dict]:
             continue
         if el.name in ("h1", "h2", "h3", "h4") and section is None:
             section = t
-        texts.append({"type": "text", "text": t})
+        texts.append({"type": "text", "text": t, "tag": el.name})
     return [_page(doc, 1, texts + items, section)]
+
+
+CODE_EXTS = {"py": "python", "js": "javascript", "jsx": "javascript", "ts": "typescript", "tsx": "typescript", "java": "java",
+             "go": "go", "rs": "rust", "c": "c", "h": "c", "cpp": "cpp", "hpp": "cpp", "cc": "cpp", "cs": "csharp",
+             "rb": "ruby", "php": "php", "sh": "shell", "sql": "sql", "kt": "kotlin", "swift": "swift"}
+
+
+def parse_code(path: Path, doc: str) -> list[dict]:
+    """A source file is one item with its exact text, so indentation and blank lines survive for code-aware chunking."""
+    text = _decode(path.read_bytes()).replace("\r\n", "\n")
+    if not text.strip():
+        return [_page(doc, 1, [])]
+    return [_page(doc, 1, [{"type": "text", "text": text.rstrip("\n"), "tag": "code"}])]
 
 
 def parse_csv(path: Path, doc: str) -> list[dict]:

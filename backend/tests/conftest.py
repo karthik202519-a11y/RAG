@@ -121,3 +121,13 @@ SAMPLE_PAGES = [
 @pytest.fixture()
 def sample_pdf() -> bytes:
     return make_pdf(SAMPLE_PAGES)
+
+
+@pytest.fixture()
+def future_method(monkeypatch):
+    """A chunking method that is described but not runnable, to test the honesty path now that every real method runs."""
+    from studio.registry import MethodSpec, registry
+    spec = MethodSpec(id="future_method", category="chunking", stage="Chunking", name="Future method", summary="s", how_it_works="h",
+                      advantages=[], disadvantages=[], status="unavailable", unavailable_reason="Not built in this test.")
+    monkeypatch.setitem(registry._methods, "future_method", spec)
+    return spec.id

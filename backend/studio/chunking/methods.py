@@ -241,6 +241,19 @@ def _cuts_from_structure(canon: Canon, chunks: list[dict]) -> tuple[list[Cut], l
             if last:
                 start, end = i, last[0] + len(last[1])
                 cursor = start
+        if start is None or (c["type"] == "text" and end is not None and (end - start) < 0.6 * len(c["text"])):
+            # Blocks with line breaks inside (JSON, Markdown, code) are re-joined with spaces by the builder, so line matching finds only a
+            # fragment. Find the chunk by its first and last words instead, treating any run of whitespace as equal.
+            words = c["text"].split()
+            if len(words) >= 4:
+                k = min(8, len(words) // 2)
+                head = r"\s+".join(re.escape(w) for w in words[:k])
+                tail = r"\s+".join(re.escape(w) for w in words[-k:])
+                m1 = re.compile(head).search(canon.text, max(0, cursor - 4000)) or re.compile(head).search(canon.text)
+                if m1:
+                    m2 = re.compile(tail).search(canon.text, m1.start())
+                    if m2 and m2.end() > m1.start():
+                        start, end, cursor = m1.start(), m2.end(), m1.start()
         if start is None:
             unlocated += 1
         cuts.append({"start": start, "end": end, "text": c["text"], "type": c["type"],
@@ -371,3 +384,12 @@ METHODS: dict[str, Callable[[Canon, dict], tuple[list[Cut], list[str]]]] = {
     "semantic": semantic,
     "parent_child": parent_child,
 }
+
+from . import methods_extra as _x  # noqa: E402  (imports helpers from this module, so it must come after them)
+
+METHODS.update({
+    "overlapping": _x.overlapping, "non_overlapping": _x.non_overlapping, "html_structure": _x.html_structure,
+    "section_based": _x.section_based, "topic_based": _x.topic_based, "layout_aware": _x.layout_aware,
+    "code_aware": _x.code_aware, "json_xml_structure": _x.json_xml_structure, "contextual": _x.contextual,
+    "proposition": _x.proposition, "adaptive": _x.adaptive,
+})

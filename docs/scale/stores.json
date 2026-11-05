@@ -1,0 +1,42 @@
+{
+ "vectors": 129,
+ "dimension": 1536,
+ "queries": 129,
+ "stores": {
+  "faiss": {
+   "load_seconds": 0.01,
+   "p50_ms": 0.2,
+   "p95_ms": 0.28,
+   "recall_at_10": 1.0,
+   "filtered_p50_ms": 0.44
+  },
+  "qdrant": {
+   "load_seconds": 1.98,
+   "p50_ms": 4.64,
+   "p95_ms": 5.63,
+   "recall_at_10": 1.0,
+   "filtered_p50_ms": 10.78
+  },
+  "chroma": {
+   "load_seconds": 0.31,
+   "p50_ms": 10.29,
+   "p95_ms": 13.34,
+   "recall_at_10": 1.0,
+   "filtered_p50_ms": 12.81
+  },
+  "lancedb": {
+   "load_seconds": 0.17,
+   "p50_ms": 27.22,
+   "p95_ms": 37.66,
+   "recall_at_10": 1.0,
+   "filtered_p50_ms": 32.2
+  },
+  "pgvector": {
+   "load_seconds": 0.56,
+   "p50_ms": 56.4,
+   "p95_ms": 61.33,
+   "recall_at_10": 1.0,
+   "filtered_p50_ms": 57.14
+  }
+ }
+}

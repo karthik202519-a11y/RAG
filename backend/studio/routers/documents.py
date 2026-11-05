@@ -16,7 +16,8 @@ from ..chunking.canon import build_canon
 from ..config import settings
 from ..db import get_db
 from ..models import AuditEvent, Document, DocumentVersion, Job, User
-from ..parsing import parser_for, supported_extensions
+from ..parsing import parser_for, parser_options, supported_extensions
+from ..parsing.textlike import CODE_EXTS
 from ..security import current_user, get_project
 
 router = APIRouter(tags=["documents"])
@@ -25,13 +26,17 @@ router = APIRouter(tags=["documents"])
 def _magic_ok(ext: str, head: bytes, whole: bytes) -> bool:
     if ext == "pdf":
         return head.startswith(b"%PDF-")
+    if ext == "png":
+        return head.startswith(b"\x89PNG")
+    if ext in ("jpg", "jpeg"):
+        return head.startswith(b"\xff\xd8")
     if ext in ("docx", "pptx", "xlsx"):
         part = {"docx": "word/document.xml", "pptx": "ppt/presentation.xml", "xlsx": "xl/workbook.xml"}[ext]
         try:
             return zipfile.is_zipfile(BytesIO(whole)) and part in zipfile.ZipFile(BytesIO(whole)).namelist()
         except zipfile.BadZipFile:
             return False
-    if ext in ("txt", "md", "markdown", "csv", "json", "html", "htm", "xml"):
+    if ext in ("txt", "md", "markdown", "csv", "json", "html", "htm", "xml") or ext in CODE_EXTS:
         return b"\x00" not in head  # text formats must not contain NUL bytes
     return False
 
@@ -68,7 +73,7 @@ def supported_formats() -> dict:
 
 @router.post("/projects/{project_id}/documents", status_code=201)
 async def upload_documents(project_id: str, files: list[UploadFile] = File(...),
-                           collection_id: str | None = Form(None), tags: str = Form(""),
+                           collection_id: str | None = Form(None), tags: str = Form(""), parser: str = Form(""),
                            user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Upload one or many files. Each file is hashed; identical content in this project is reported as a
     duplicate and not stored again. A same-named file with new content becomes a new version.
@@ -83,6 +88,10 @@ async def upload_documents(project_id: str, files: list[UploadFile] = File(...),
         if parser_for(ext) is None:
             results.append({"filename": name, "status": "rejected",
                             "error": f"Unsupported file type '.{ext}'. Supported: {', '.join(supported_extensions())}"})
+            continue
+        if parser and parser != parser_for(ext) and parser not in parser_options(ext):
+            results.append({"filename": name, "status": "rejected",
+                            "error": f"Parser '{parser}' cannot read .{ext} files. Choose one of: {', '.join([parser_for(ext), *parser_options(ext)])}"})
             continue
         data = await f.read(limit + 1)
         if len(data) > limit:
@@ -117,7 +126,7 @@ async def upload_documents(project_id: str, files: list[UploadFile] = File(...),
         db.add(AuditEvent(user_id=user.id, workspace_id=project.workspace_id, action="document.upload",
                           target=ver.id, detail={"filename": name, "bytes": len(data)}))
         db.commit()
-        job = jobs.enqueue(db, project.id, "ingest_document", ver.id)
+        job = jobs.enqueue(db, project.id, "ingest_document", ver.id, {"parser": parser} if parser else None)
         results.append({"filename": name, "status": "queued", "document_id": doc.id, "version_id": ver.id,
                         "version": n, "job_id": job.id})
     return {"results": results}

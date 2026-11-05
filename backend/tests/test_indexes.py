@@ -140,13 +140,13 @@ def test_unconfigured_provider_is_refused_clearly(client, auth, project, docs):
     assert client.post("/providers/azure_openai/test", headers=auth).status_code == 409
 
 
-def test_create_validation(client, auth, project):
+def test_create_validation(client, auth, project, future_method):
     body = {"name": "x", "chunking": CHUNKING, "provider": "local_hash"}
     r = client.post(f"/projects/{project['id']}/indexes", headers=auth, json=body)
     assert r.status_code == 422 and "No ready documents" in r.json()["detail"]
     make_docs(client, auth, project)
     for chunking, msg in [({"method": "fixed_token", "params": {"size": 50, "overlap": 50}}, "Overlap"),
-                          ({"method": "topic_based", "params": {}}, "not available"),
+                          ({"method": "future_method", "params": {}}, "not available"),
                           ({"method": "nope", "params": {}}, "Unknown")]:
         r = client.post(f"/projects/{project['id']}/indexes", headers=auth, json={**body, "chunking": chunking})
         assert r.status_code == 422 and msg in r.json()["detail"], r.text

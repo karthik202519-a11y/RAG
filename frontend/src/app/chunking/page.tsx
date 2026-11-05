@@ -11,7 +11,10 @@ import { MethodDetail } from "@/components/method-detail";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
 import { ParamControl, defaults, validate } from "@/components/param-form";
 import { api, type Catalog, type ChunkPreview, type Doc } from "@/lib/api";
+
 import { useProject } from "@/lib/project";
+
+type DocRec = { chunking: { method: string; name: string; why: string; measured: string; needs_layout_data: boolean } | null; parser?: { method: string; why: string } };
 
 type Cfg = { id: number; method: string; params: Record<string, unknown>; label: string };
 
@@ -89,6 +92,7 @@ export default function ChunkingPlayground() {
   const problem = cur ? validate(curMethod, cur.params) : null;
   const allProblems = cfgs.map((c) => validate(byId[c.method], c.params)).find(Boolean) ?? null;
   const update = (patch: Partial<Cfg>) => setCfgs(cfgs.map((c, i) => (i === active ? { ...c, ...patch } : c)));
+  const rec = useQuery({ queryKey: ["doc-rec", docId], enabled: !!docId, staleTime: 60_000, queryFn: () => api<DocRec>(`/documents/${docId}/recommendation`) });
   const setMethod = (id: string) => { const m = byId[id]; if (m) update({ method: id, params: defaults(m) }); };
   const addConfig = (method?: string, params?: Record<string, unknown>) => {
     if (cfgs.length >= 4) return;
@@ -132,6 +136,16 @@ export default function ChunkingPlayground() {
       {pages > BIG && <p className="mb-3 text-xs text-dim">This document has {pages} pages, so the range starts at 1–8. Clear the fields to chunk everything (slower, and the text view shows at most 120,000 characters).</p>}
       {docs.data?.items.length === 0 && <Empty title="No ready documents in this project"><Link className="text-accent underline" href="/ingestion">Upload and parse a document first</Link></Empty>}
 
+      {rec.data?.chunking && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm" role="note">
+          <Badge tone="accent">Suggested</Badge>
+          <span><strong>{rec.data.chunking.name}</strong> for this document, because {rec.data.chunking.why}.</span>
+          {byId[rec.data.chunking.method] && cur?.method !== rec.data.chunking.method && <Button size="sm" onClick={() => setMethod(rec.data!.chunking!.method)}>Use it</Button>}
+          {rec.data.chunking.needs_layout_data && <span className="text-xs text-warn">Needs a PDF uploaded recently so layout data exists.</span>}
+          {rec.data.parser && <span className="text-xs text-warn">Parser: {rec.data.parser.method} ({rec.data.parser.why}).</span>}
+          <span className="basis-full text-xs text-dim">Measured: {rec.data.chunking.measured}.</span>
+        </div>
+      )}
       <div className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_24rem]">
         {/* ---- left: method catalog ---- */}
         <Card title={`Methods (${methods.filter((m) => m.status !== "unavailable").length})`} pad={false} className="h-fit">
@@ -140,18 +154,19 @@ export default function ChunkingPlayground() {
               <li key={m.id}>
                 <button onClick={() => setMethod(m.id)} aria-pressed={cur?.method === m.id} title={m.summary}
                   className={clsx("flex w-full items-center px-3 py-2 text-left text-sm hover:bg-surface-2", cur?.method === m.id && "bg-accent-soft font-medium text-accent")}>
-                  {m.name}
+                  <span className="flex-1">{m.name}</span>
+                  {m.status === "requires_credentials" && <Badge tone="warn" title="Calls the chat model: spends tokens">chat model</Badge>}
                 </button>
               </li>
             ))}
           </ul>
-          <details className="border-t border-border">
+          {methods.some((m) => m.status === "unavailable") && <details className="border-t border-border">
             <summary className="cursor-pointer px-3 py-2 text-xs text-dim hover:bg-surface-2">{methods.filter((m) => m.status === "unavailable").length} more planned, not runnable yet</summary>
             <ul className="px-3 pb-2 text-xs text-dim">
               {methods.filter((m) => m.status === "unavailable").map((m) => <li key={m.id} className="py-0.5" title={m.unavailable_reason ?? undefined}>{m.name}</li>)}
             </ul>
             <p className="px-3 pb-2 text-xs text-dim">Hover for why. <Link href="/catalog" className="text-accent underline">Open the Method Catalog</Link></p>
-          </details>
+          </details>}
         </Card>
 
         {/* ---- centre: visualisation ---- */}

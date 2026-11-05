@@ -8,7 +8,7 @@ Legend: **Implemented + tested** = runs and has automated tests. **Verified live
 service (Azure OpenAI, Postgres, Qdrant server, MinIO, Redis) or in the browser, without an automated test.
 **Not built** = described, cannot be run.
 
-Counts from the registry: **72+ methods registered; about 26 run, the rest are labelled "not built".**
+Counts from the registry (91 methods): **chunking 23 of 23 run; parsers 15 of 23; embedding 8 of 9; vector stores 5 of 11; retrieval 12 of 12; generation 5 of 6; multimodal 6 of 7.** Anything that cannot run says exactly why (a missing server, key or heavy dependency), and hosted-service adapters are marked as tested against recorded responses only.
 Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 16. Tests never call Azure.
 
 ## Platform
@@ -54,20 +54,19 @@ Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 
 | **Parser Lab**: PyMuPDF, pdfplumber and pypdf on the same pages side by side, with text, table counts, timings and word-level agreement | Implemented + tested; verified on the handbook (pages 120 to 122: pdfplumber found 6 tables, PyMuPDF 0). Comparison only: ingestion still uses PyMuPDF |
 | Docling, Unstructured, Tika, Tesseract, PaddleOCR, Azure Document Intelligence, AWS Textract, Google Document AI, LlamaParse | Not built |
 
-## Chunking (registry category `chunking`): 12 run, 12 do not
+## Chunking (registry category `chunking`): all 23 run (2 need the chat model)
 
 | Method | Status |
 |---|---|
-| Fixed characters, fixed tokens, sliding window, recursive, sentence, paragraph, Markdown header, page-aware, structure-aware | Implemented + tested; all run on the 297-page NASA handbook |
-| **Table-aware (row-level)**: one chunk per row (or group of rows) with caption and headers repeated; Markdown or key-value format | Implemented + tested; 492 row chunks on the handbook, none unlocated |
-| Overlapping / non-overlapping | Not separate methods: the `overlap` parameter |
-| **Semantic chunking**: split where embedding similarity between neighbouring sentences drops | Implemented + tested; uses the project embedder (cached, parallel batches) |
-| **Parent-child (small-to-big)**: embed small children, return the larger parent; neighbour expansion at query time | Implemented + tested; backend and API only, no UI control for expansion yet |
-| **Contextual embedding** (index option, not a playground method): a chat model writes one situating sentence per text chunk from the file name, section and neighbouring text; it is embedded with the chunk and stored so you can read it | Implemented + tested with a fake model; not yet compared on the evaluation set |
-| HTML structure, document section, topic, layout-aware, code-aware, JSON/XML structure, LLM proposition, adaptive | Not built |
+| Fixed characters, fixed tokens, sliding window, recursive, sentence, paragraph, Markdown header, page-aware, structure-aware | Implemented + tested; run on the 297-page handbook and on 8.4 million characters of real files |
+| Table-aware (row-level), semantic (embedding-based), parent-child (small-to-big) | Implemented + tested |
+| **Overlapping** (percentage preset) and **non-overlapping** (recursive or fixed, overlap forced to 0) | Implemented + tested |
+| **HTML structure** (headings, lists, tables), **section-based**, **topic-based** (TextTiling, no model), **layout-aware** (font size, columns, gaps from PDF layout data), **code-aware** (Python syntax tree; declaration patterns for other languages), **JSON/XML structure** (exact record slices) | Implemented + tested on matching inputs; each falls back to recursive splitting, and says so, on documents it is not designed for |
+| **Contextual** (a chat model writes one stored sentence per chunk) and **proposition** (a chat model rewrites passages into atomic facts, each kept only if its words occur in the source) | Implemented + tested with a fake model; verified live on `gpt-4o-mini` (40 chunks enriched in 32 s; 12 passages into 160 propositions in 19 s) |
+| **Adaptive**: measures the document and picks the method, printing the measurements and the reason | Implemented + tested; the same rules power the Suggestions page |
 
-Every chunk has exact character offsets, pages, printed pages and section. Measured per run: chunk count, token
-distribution, duplication, coverage, mid-sentence endings, embedding tokens, optional cost, timing.
+Layout-aware needs position and font data, which is recorded for PDFs uploaded after this feature; older uploads fall back and are told to re-upload.
+Every chunk has exact character offsets, pages, printed pages and section (except proposition chunks, which are the model's wording and have no highlight). Measured per run: chunk count, token distribution, duplication, coverage, mid-sentence endings, embedding tokens, optional cost, timing.
 
 ## Embeddings, indexes and retrieval
 
@@ -90,8 +89,20 @@ distribution, duplication, coverage, mid-sentence endings, embedding tokens, opt
 | **Vision descriptions of diagram pages** (`gpt-4o`), checkpointed per page, idempotent, searchable | Implemented + tested with a fake model; verified live on 4 real pages; turned a refused diagram question into a correct answer |
 | **FAISS vector store** (exact, flat; filters run inside the search), chosen per index; same top results as Qdrant in tests | Implemented + tested; connection test verified in the browser |
 | **GraphRAG slice**: a model extracts entities and relations per chunk; anything not found in the chunk text is rejected; communities by modularity; local graph search compared with dense search; interactive graph | Implemented + tested with a fake model; **verified live** on 60 handbook chunks (534 entities, 139 relations, 445 model proposals rejected as not in the text, 332 entities with no relations). Not evaluated for answer quality; no global (community-summary) search |
-| pgvector, Chroma, Azure AI Search and the other vector stores; other embedding and LLM providers | Not built |
+| **Vector stores**: Qdrant, FAISS, **Chroma**, **LanceDB**, **pgvector** behind one interface, with one contract test run against all five | Implemented + tested; pgvector tested live in the `pgvector/pgvector:pg16` container |
+| Milvus, Weaviate, Elasticsearch/OpenSearch, Azure AI Search, Pinecone, MongoDB Atlas | Not built: each needs a server or cloud account (reason shown in the catalog) |
+| **Embeddings**: Azure OpenAI, **FastEmbed local semantic models** (BGE default), OpenAI, Ollama, Cohere, Voyage | FastEmbed tested on the real model; the others tested with recorded responses only (no keys or servers here) |
+| **Cross-encoder reranking** (local, free) beside LLM reranking | Implemented + tested on the real model |
+| **Chat providers**: Azure OpenAI plus `openai:`, `anthropic:`, `gemini:`, `ollama:` prefixed models | Adapters tested with recorded responses only; AWS Bedrock not built |
 | Streaming answers, persisted answers | Not built |
+
+## Suggestions (mandatory stage advice)
+
+| Item | Status |
+|---|---|
+| **Suggestions page**: a pick for parsing, chunking, embedding, vector store, retrieval, reranking, generation and evaluation, each with reasons, evidence and alternatives, labelled **Measured** (from your evaluation runs, only when the gap is outside the confidence interval on 10+ questions), **Rule** (from measurements of your documents) or **Starting point** | Implemented + tested |
+| Per-document suggestion chip in the Chunking Playground ("Suggested: Code-aware, because the file is source code") with a Use button | Implemented + tested |
+| Next experiments to run (missing baselines, FAISS exact check, reranker on/off, contextual on a subset) | Implemented + tested |
 
 ## Evaluation Center
 
@@ -120,9 +131,26 @@ distribution, duplication, coverage, mid-sentence endings, embedding tokens, opt
 | Evaluation and vision-description jobs run questions/pages with a worker pool | Implemented + tested |
 | GZip responses, cached method catalog, route prefetch on link hover, lazy-loaded charts | Implemented; first-load JS about 200 KB gzip; pages show their heading in 170 to 350 ms locally |
 
+## Parsers and visual content (added)
+
+| Item | Status |
+|---|---|
+| **Parser choice on upload**: PyMuPDF (default), **pdfplumber** (ruled tables), **RapidOCR** (local OCR for scanned PDFs and PNG/JPEG), **Azure Document Intelligence** | pdfplumber and OCR tested on real files; Azure tested with a recorded response only |
+| **Source code upload** (Python, JS/TS, Java, Go, Rust, C/C++, C#, Ruby, PHP, shell, SQL, Kotlin, Swift) | Implemented + tested |
+| **Visual Lab**: figure crops (pictures and drawing clusters), chart-to-table with the vision model (flagged as model-read), **CLIP page search** (local ONNX, find pages by appearance) | Implemented + tested; CLIP tested on the real model |
+| Docling, Unstructured, Tika, Tesseract, PaddleOCR, AWS Textract, Google Document AI, LlamaParse | Not built; reasons in the catalog (heavy dependencies, Java, missing binaries, cloud accounts) |
+
+## Scale test (see docs/SCALE_TEST.md)
+
+| Item | Status |
+|---|---|
+| Every model-free chunking method on corpora of 0.06M, 0.86M, 3.3M and 8.4M characters of real files | **Measured**: each method finishes the 8.4M corpus in 2 to 24 seconds at under 165 MB |
+| End-to-end through the API on a 10,000-character corpus (upload, parse, Azure embeddings, needle questions) | **Measured**: 5 files, 0 failures, 129 chunks, 26 questions, hit 0.96 |
+| End-to-end at 1M, 3M and 10M characters | **Not run**: stopped at your request; the scripts exist (`scripts/scale_bench/`) |
+| Vector-store comparison, semantic and LLM chunker timings | **Measured** on the 10,000-character corpus's vectors and a 300k-character sample |
+
 ## Not started
 
 Pipeline builder (the Retrieval Lab already composes transform, retrieval, rerank and MMR, but there is no visual builder),
-experiment reports and isolated experiment indexes, OpenTelemetry export, recommendation engine, context compression,
-multimodal retrieval beyond vision descriptions, global GraphRAG search with community summaries, other vector databases,
-the 10,000-document load test.
+experiment reports and isolated experiment indexes, OpenTelemetry export, context compression, global GraphRAG search with
+community summaries, the vector stores and parsers listed as not built above, the 10,000-document load test.

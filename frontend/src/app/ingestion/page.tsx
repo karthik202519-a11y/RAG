@@ -19,6 +19,7 @@ export default function IngestionPage() {
   const [staged, setStaged] = useState<File[]>([]);
   const [collectionId, setCollectionId] = useState("");
   const [tags, setTags] = useState("");
+  const [parser, setParser] = useState("");
   const [results, setResults] = useState<UploadResult[]>([]);
   const [filters, setFilters] = useState({ q: "", status: "", ext: "" });
   const [openDoc, setOpenDoc] = useState<string | null>(null);
@@ -50,12 +51,14 @@ export default function IngestionPage() {
 
   const jobs = liveJobs ?? jobsQ.data?.items ?? [];
 
+  const wantsParser = staged.some((f) => /[.](pdf|png|jpe?g)$/i.test(f.name));
   const upload = useMutation({
     mutationFn: async () => {
       const form = new FormData();
       staged.forEach((f) => form.append("files", f, f.name));
       if (collectionId) form.append("collection_id", collectionId);
       if (tags) form.append("tags", tags);
+      if (parser && wantsParser) form.append("parser", parser);
       return api<{ results: UploadResult[] }>(`/projects/${pid}/documents`, { method: "POST", body: form });
     },
     onSuccess: (r) => {
@@ -127,6 +130,13 @@ export default function IngestionPage() {
                 </Select>
               </Field>
               <Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="spec, draft" /></Field>
+              {wantsParser && (
+                <Field label="PDF / image parser" hint={parser === "rapidocr" ? "Local OCR for scanned pages: slow, no text layer needed." : parser === "pdfplumber" ? "Finds ruled tables PyMuPDF can miss." : parser === "azure_document_intelligence" ? "Needs Document Intelligence credentials." : "PyMuPDF for PDFs; OCR for images."}>
+                  <Select value={parser} onChange={(e) => setParser(e.target.value)} aria-label="Parser">
+                    <option value="">Automatic</option><option value="pdfplumber">pdfplumber (tables)</option><option value="rapidocr">RapidOCR (scanned pages, images)</option>
+                    <option value="azure_document_intelligence">Azure Document Intelligence</option>
+                  </Select>
+                </Field>)}
             </div>
             <Button variant="primary" className="mt-3 w-full" disabled={staged.length === 0} loading={upload.isPending} onClick={() => upload.mutate()}>
               Upload {staged.length > 0 ? `${staged.length} file${staged.length > 1 ? "s" : ""}` : ""}

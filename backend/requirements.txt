@@ -24,6 +24,13 @@ faiss-cpu>=1.9            # second vector store (exact, flat)
 pdfplumber>=0.11          # parser comparison lab
 pypdf>=5.0                # parser comparison lab
 networkx>=3.2             # knowledge graph communities
+fastembed>=0.5            # local semantic embeddings, cross-encoder reranker, CLIP (ONNX)
+chromadb>=1.0             # vector store
+lancedb>=0.20             # vector store
+pyarrow>=17               # LanceDB tables
+rapidocr>=3.0             # local OCR (ONNX)
+Pillow>=10                # image decoding for CLIP
+httpx>=0.27               # hosted-provider adapters
 
 # document parsers
 python-docx>=1.1

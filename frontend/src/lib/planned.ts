@@ -5,10 +5,6 @@ export type Planned = {
 };
 
 export const PLANNED: Planned[] = [
-  { slug: "multimodal", title: "Multimodal Lab", stage: "Stage 5",
-    summary: "Index figures, charts and page images; query them with text.",
-    willDo: ["Figure crops with vision-model descriptions", "OCR regions and captions", "Image and page-image embeddings"],
-    backendToday: "Diagram pages are detected, rendered to PNG and described by a vision model (searchable); there are no figure crops, OCR regions or image embeddings yet." },
   { slug: "pipelines", title: "Pipeline Builder", stage: "Stage 6",
     summary: "Compose a RAG pipeline visually and run it with artifact reuse.",
     willDo: ["Node-based builder with type checking", "Templates and versioning", "Live execution DAG"],

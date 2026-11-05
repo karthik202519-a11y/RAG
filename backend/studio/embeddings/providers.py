@@ -94,6 +94,9 @@ class HashEmbedder:
 
 
 PROVIDERS = {p.id: p for p in (AzureOpenAIEmbedder(), HashEmbedder())}
+from .providers_extra import EXTRA  # noqa: E402  (imports names defined above)
+
+PROVIDERS.update({p.id: p for p in EXTRA})
 
 
 def get_provider(provider_id: str):

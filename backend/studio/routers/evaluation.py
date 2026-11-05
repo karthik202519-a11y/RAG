@@ -176,7 +176,7 @@ class RunIn(BaseModel):
     k: int = Field(5, ge=1, le=50)
     split: Literal["all", "train", "validation", "test"] = "all"
     transform: Literal["none", "rewrite", "multi_query", "hyde", "decompose"] = "none"
-    rerank: Literal["none", "llm"] = "none"
+    rerank: Literal["none", "llm", "cross_encoder"] = "none"
     mmr: bool = False
     with_answers: bool = False
     judge: bool = Field(False, description="Also judge faithfulness of each answer with the chat model (extra LLM calls)")
@@ -221,7 +221,7 @@ class GridIn(BaseModel):
     index_ids: list[str] = Field(min_length=1, max_length=8)
     modes: list[Literal["dense", "bm25", "hybrid"]] = Field(default_factory=lambda: ["dense"], min_length=1, max_length=3)
     ks: list[int] = Field(default_factory=lambda: [5], min_length=1, max_length=4)
-    rerank: list[Literal["none", "llm"]] = Field(default_factory=lambda: ["none"], min_length=1, max_length=2)
+    rerank: list[Literal["none", "llm", "cross_encoder"]] = Field(default_factory=lambda: ["none"], min_length=1, max_length=3)
     split: Literal["all", "train", "validation", "test"] = "all"
     transform: Literal["none", "rewrite", "multi_query", "hyde", "decompose"] = "none"
     mmr: bool = False

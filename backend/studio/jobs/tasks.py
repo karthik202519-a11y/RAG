@@ -39,7 +39,8 @@ def ingest_document(ctx: JobContext) -> None:
 
         t0 = time.perf_counter()
         try:
-            parser, pages = parse_file(src, ver.ext, doc_name, work / "visual_pages", progress, ctx.cancelled)
+            parser, pages = parse_file(src, ver.ext, doc_name, work / "visual_pages", progress, ctx.cancelled,
+                                      ctx.job.params.get("parser"))
         except InterruptedError:
             raise
         except Exception as e:

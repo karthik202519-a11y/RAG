@@ -24,7 +24,7 @@ function Contributions({ h, mode }: { h: SearchHit; mode: string }) {
   return (
     <div className="flex flex-wrap gap-1.5 text-xs">
       {h.rerank && <Badge tone={h.rerank.moved > 0 ? "good" : h.rerank.moved < 0 ? "bad" : "neutral"} title="Rank before and after the LLM reranker, and its 0-10 score">
-        rerank {h.rerank.before_rank}→{h.rerank.after_rank} · LLM {h.rerank.score}/10</Badge>}
+        rerank {h.rerank.before_rank}→{h.rerank.after_rank} · {h.rerank.method === "cross_encoder" ? `cross-encoder ${h.rerank.score}` : `LLM ${h.rerank.score}/10`}</Badge>}
       {h.mmr && <Badge title="Relevance to the query, and similarity to the already-selected results">mmr rel {h.mmr.relevance} · overlap {h.mmr.max_similarity_to_selected}</Badge>}
       {h.queries_found_by != null && h.queries_found_by > 1 && <Badge tone="accent">found by {h.queries_found_by} queries</Badge>}
       {c.dense && <Badge tone="accent" title="Rank and cosine similarity from the vector search">dense #{c.dense.rank} · cos {c.dense.score.toFixed(3)}</Badge>}
@@ -192,7 +192,7 @@ export default function RetrievalLab() {
               </Field>
               <Field label="Reranking" hint="The chat model scores each candidate 0-10 and reorders. Original scores are kept.">
                 <Select value={rerank} onChange={(e) => setRerank(e.target.value)} aria-label="Reranking">
-                  <option value="none">None</option><option value="llm">LLM reranker</option>
+                  <option value="none">None</option><option value="cross_encoder">Cross-encoder (local, free)</option><option value="llm">LLM reranker</option>
                 </Select>
               </Field>
               <label className="flex items-start gap-2 text-sm">
@@ -202,7 +202,7 @@ export default function RetrievalLab() {
               {mmrOn && <Field label={`Relevance vs diversity: ${mmrLambda}`} hint="1 = only relevance, 0 = only diversity.">
                 <input type="range" min={0} max={1} step={0.05} value={mmrLambda} onChange={(e) => setMmrLambda(Number(e.target.value))} className="w-full" aria-label="MMR lambda" />
               </Field>}
-              {(transform !== "none" || rerank !== "none") && !gen?.configured && <p className="text-xs text-warn">These options need the chat model: {gen?.detail}</p>}
+              {(transform !== "none" || rerank === "llm") && !gen?.configured && <p className="text-xs text-warn">These options need the chat model: {gen?.detail}</p>}
             </div>
           </Card>
           <Card title="Answer with citations">

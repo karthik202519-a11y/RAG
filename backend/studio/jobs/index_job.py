@@ -110,7 +110,8 @@ def build_index(ctx: JobContext) -> None:
             rows.append(IndexChunk(index_id=idx.id, document_id=doc.id, version_id=ver.id, filename=doc.filename,
                                    chunk_index=c["index"], start=c["start"], end=c["end"], text=c["text"],
                                    ctype=c["type"], tokens=c["tokens"], pages=c["pages"],
-                                   printed_pages=c["printed_pages"], section=c["section"], parent_id=pid))
+                                   printed_pages=c["printed_pages"], section=c["section"], parent_id=pid,
+                                   context=c.get("context")))
         all_parents.extend(parents.values())
         ctx.progress(0.02 + 0.2 * (n + 1) / len(versions), f"chunking {n + 1}/{len(versions)} documents")
     if not rows:

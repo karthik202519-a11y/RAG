@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import {
-  BookOpen, ClipboardCheck, Database, FileStack, FolderKanban, LayoutDashboard, LogOut, Menu, Moon, Activity, Network, Settings, ScanText, Scissors, ScatterChart, Search, Sun, X,
+  BookOpen, ClipboardCheck, Database, FileStack, FolderKanban, LayoutDashboard, LogOut, Menu, Moon, Activity, Network, Settings, Lightbulb, Image as ImageIcon, ScanText, Scissors, ScatterChart, Search, Sun, X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -18,6 +18,7 @@ import { Spinner } from "./ui";
 const GROUPS = [
   { label: "Overview", items: [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/recommendations", label: "Suggestions", icon: Lightbulb },
     { href: "/projects", label: "Projects & Collections", icon: FolderKanban } ] },
   { label: "Build", items: [
     { href: "/ingestion", label: "Document Ingestion", icon: FileStack },
@@ -27,7 +28,8 @@ const GROUPS = [
   { label: "Explore", items: [
     { href: "/retrieval", label: "Retrieval Lab", icon: Search },
     { href: "/embeddings", label: "Embedding Explorer", icon: ScatterChart },
-    { href: "/graph", label: "GraphRAG Explorer", icon: Network } ] },
+    { href: "/graph", label: "GraphRAG Explorer", icon: Network },
+    { href: "/visual", label: "Visual Lab", icon: ImageIcon } ] },
   { label: "Measure", items: [
     { href: "/evaluation", label: "Evaluation Center", icon: ClipboardCheck },
     { href: "/traces", label: "Traces", icon: Activity } ] },

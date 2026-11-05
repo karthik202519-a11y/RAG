@@ -47,9 +47,17 @@ def is_reasoning_model(name: str) -> bool:
 
 
 def configured_models() -> list[str]:
+    from . import providers
     extra = [m.strip() for m in settings.azure_chat_deployments.split(",") if m.strip()]
     first = [settings.azure_chat_deployment] if settings.azure_chat_deployment else []
-    return list(dict.fromkeys(first + extra))
+    return list(dict.fromkeys(first + extra + providers.default_models()))
+
+
+def status_for(model: str) -> tuple[bool, str]:
+    """Can this model name be used right now? A provider prefix (openai:, anthropic:, gemini:, ollama:) routes elsewhere than Azure."""
+    from . import providers
+    prov, _ = providers.split_model(model or "")
+    return providers.status(prov) if prov else generation_status()
 
 
 def generation_status() -> tuple[bool, str]:
@@ -69,7 +77,15 @@ class ChatResult:
 
 
 def chat_complete(model: str, messages: list[dict], temperature: float, max_output_tokens: int) -> ChatResult:
-    """One chat completion against the configured Azure resource (v1 route)."""
+    """One chat completion. A provider-prefixed model (anthropic:..., openai:...) goes to that provider; otherwise the Azure resource (v1 route)."""
+    from . import providers
+    prov, name = providers.split_model(model)
+    if prov:
+        try:
+            text, pt, ct, fin, served = providers.chat(prov, name, messages, temperature, max_output_tokens)
+        except providers.ProviderChatError as e:
+            raise GenerationError(str(e)) from e
+        return ChatResult(text, pt, ct, 0, fin, served)
     ok, why = generation_status()
     if not ok:
         raise GenerationNotConfigured(why)
@@ -149,7 +165,7 @@ def answer(db: Session, index: Index, question: str, *, model: str | None = None
            price_out_per_million: float | None = None, system_prompt: str | None = None,
            document_ids: list[str] | None = None, expand: str = "none", neighbors: int = 1) -> dict:
     model = model or settings.azure_chat_deployment
-    ok, why = generation_status()
+    ok, why = status_for(model)
     if not ok:
         raise GenerationNotConfigured(why)
 

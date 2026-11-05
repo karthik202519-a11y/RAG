@@ -144,7 +144,7 @@ export type FiguresInfo = {
 };
 export type Provider = { id: string; model: string | null; available: boolean; detail: string; semantic: boolean };
 export type Providers = {
-  embedding: Provider[]; vector_stores: { id: string; available: boolean; mode: string }[];
+  embedding: Provider[]; vector_stores: { id: string; available: boolean; mode: string; detail?: string }[];
   generation: { configured: boolean; detail: string; default_model: string | null; models: string[] };
 };
 export type IndexInfo = {
@@ -160,7 +160,7 @@ export type Contribution = {
 };
 export type SearchHit = {
   final_rank?: number; queries_found_by?: number;
-  rerank?: { score: number; before_rank: number; after_rank: number; moved: number };
+  rerank?: { score: number; before_rank: number; after_rank: number; moved: number; method?: string };
   mmr?: { relevance: number; max_similarity_to_selected: number };
   rank: number; chunk_id: string; score: number; contributions: Contribution; document_id: string; version_id: string;
   filename: string; chunk_index: number; type: "text" | "table"; section: string | null; pages: number[];

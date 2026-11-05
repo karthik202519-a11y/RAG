@@ -1,0 +1,42 @@
+{
+ "semantic_fastembed_100k": {
+  "chars": 99586,
+  "documents": 11,
+  "sentences_embedded": 675,
+  "chunks": 75,
+  "seconds": 127.1,
+  "sentences_per_second": 5.3,
+  "chars_per_second": 784
+ },
+ "semantic_fastembed_300k": {
+  "chars": 295042,
+  "documents": 14,
+  "sentences_embedded": 2122,
+  "chunks": 201,
+  "seconds": 191.7,
+  "sentences_per_second": 11.1,
+  "chars_per_second": 1539
+ },
+ "contextual": {
+  "document": "LICENSE-3RD-PARTY.txt",
+  "chunks": 143,
+  "seconds": 32.4,
+  "enriched": 40,
+  "warnings": [
+   "Wrote context for 40 of 143 chunks with gpt-4o-mini.",
+   "Only the first 40 chunks were enriched (max chunks = 40); set it to 0 to enrich all 143 (one chat call each)."
+  ],
+  "example": "This passage is part of the LICENSE-3RD-PARTY.txt document, detailing the redistribution of the OpenCV library under the Apache License 2.0, including definitions relevant to the license terms."
+ },
+ "proposition": {
+  "document": "LICENSE-3RD-PARTY.txt",
+  "chunks": 160,
+  "seconds": 18.7,
+  "enriched": null,
+  "warnings": [
+   "Rewrote 12 of 143 passages into 160 chunk(s) with gpt-4o-mini. Chunk text is the model's wording, so chunks are not highlighted in the document; each statement was kept only if at least 70% of its content words occur in its source passage (9 dropped).",
+   "Only the first 12 passages were processed (max passages = 12); set it to 0 for all 143 (one chat call each)."
+  ],
+  "example": "The OpenCV library is redistributed within the opencv-python package."
+ }
+}

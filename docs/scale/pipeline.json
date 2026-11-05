@@ -1,0 +1,59 @@
+{
+ "base": "http://localhost:8001",
+ "sizes": {
+  "10000": {
+   "project_id": "5b032d8ece174645ba0109d9b7f9861a",
+   "ingest": {
+    "files": 5,
+    "seconds": 3.4,
+    "files_per_second": 1.47,
+    "failed": 0,
+    "stats": {
+     "pages": 5,
+     "tokens": 40322,
+     "tables": 0
+    }
+   },
+   "index": {
+    "id": "efe5e0cb69344834b92a097247395ca7",
+    "seconds": 12.1,
+    "chunks": 129,
+    "tokens_embedded": 42055,
+    "tokens_billed": 42385,
+    "cache_hits": 0,
+    "build_seconds": 9.55,
+    "dimension": 1536
+   },
+   "retrieval": {
+    "dense": {
+     "questions": 26,
+     "hit": 0.9615,
+     "mrr": 0.9615,
+     "ndcg": 0.9615,
+     "recall": 0.9615,
+     "keyword_coverage": 1.0,
+     "latency_p50_ms": 1349.6,
+     "latency_p95_ms": 1893.2,
+     "hit_ci95": [
+      0.8846,
+      1.0
+     ]
+    },
+    "hybrid": {
+     "questions": 26,
+     "hit": 0.9615,
+     "mrr": 0.9327,
+     "ndcg": 0.9396,
+     "recall": 0.9615,
+     "keyword_coverage": 0.9615,
+     "latency_p50_ms": 53.5,
+     "latency_p95_ms": 191.0,
+     "hit_ci95": [
+      0.8846,
+      1.0
+     ]
+    }
+   }
+  }
+ }
+}

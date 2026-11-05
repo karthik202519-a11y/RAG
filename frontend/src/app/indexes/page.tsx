@@ -9,6 +9,12 @@ import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select,
 import { api, type Catalog, type Doc, type IndexInfo, type Providers } from "@/lib/api";
 import { useProject } from "@/lib/project";
 
+const STORE_HINT: Record<string, string> = {
+  qdrant: "Approximate (HNSW) search with payload filters.", faiss: "Exact brute-force search; no server, saved to disk.",
+  chroma: "Embedded HNSW database on disk.", lancedb: "Embedded columnar files; exact scan with filters first.",
+  pgvector: "HNSW inside PostgreSQL; needs PGVECTOR_URL (pgvector/pgvector Docker image).",
+};
+
 export default function IndexesPage() {
   const qc = useQueryClient();
   const { project, loading } = useProject();
@@ -92,9 +98,9 @@ export default function IndexesPage() {
                     {providers.data?.embedding.map((e) => <option key={e.id} value={e.id} disabled={!e.available}>{e.id}{e.model ? ` (${e.model})` : ""}{e.available ? "" : " - not configured"}</option>)}
                   </Select>
                 </Field>
-                <Field label="Vector store" hint={store === "faiss" ? "Exact brute-force search; no server, saved to disk." : "Approximate (HNSW) search with payload filters."}>
+                <Field label="Vector store" hint={STORE_HINT[store] ?? ""}>
                   <Select value={store} onChange={(e) => setStore(e.target.value)} aria-label="Vector store">
-                    {(providers.data?.vector_stores ?? [{ id: "qdrant", available: true, mode: "" }]).map((v) => <option key={v.id} value={v.id} disabled={!v.available}>{v.id}{v.mode ? ` (${v.mode})` : ""}</option>)}
+                    {(providers.data?.vector_stores ?? [{ id: "qdrant", available: true, mode: "", detail: "" }]).map((v) => <option key={v.id} value={v.id} disabled={!v.available} title={v.detail}>{v.id}{v.mode ? ` (${v.mode})` : ""}{v.available ? "" : " - not configured"}</option>)}
                   </Select>
                 </Field>
                 <Field label="Chunking method">

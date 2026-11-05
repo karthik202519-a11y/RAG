@@ -231,7 +231,7 @@ registry.register(MethodSpec(
                    "Results depend on the embedding model and the percentile, which need tuning on your data"],
     suitable_documents=["Long prose with clear topic changes"], use_cases=["Articles, reports, transcripts"],
     params=[ParamSpec(name="provider", label="Embedding provider", type="select", default="azure_openai",
-                      options=["azure_openai", "local_hash"], help="Used to embed sentences. local_hash is an offline demo that only matches shared words."),
+                      options=["azure_openai", "fastembed", "openai", "ollama", "cohere", "voyage", "local_hash"], help="Used to embed sentences. local_hash is an offline demo that only matches shared words."),
             ParamSpec(name="breakpoint_percentile", label="Breakpoint percentile", type="int", default=90, min=50, max=99,
                       help="Cut at gaps larger than this percentile of all sentence-to-sentence distances. Higher = fewer, larger chunks."),
             ParamSpec(name="min_tokens", label="Minimum chunk size", type="int", default=60, min=1, max=2000, unit="tokens",
@@ -268,52 +268,3 @@ registry.register(MethodSpec(
     compare_with=["recursive", "structure_aware"],
     recommended_experiment="Index with this method, search with and without 'expand to parent', and compare answers on questions that need context."))
 
-# ---------------------------------------------------------------- planned (not executable yet)
-_planned("overlapping", "Overlapping chunking (preset)",
-         "Any size-based method with overlap > 0.",
-         "Not a separate algorithm: it is the `overlap` setting of fixed, recursive, sentence, paragraph and "
-         "sliding-window methods.",
-         ["Protects facts near boundaries"], ["Duplicates text, grows the index"],
-         "Covered by the overlap parameter of the implemented methods; no separate method needed.")
-_planned("non_overlapping", "Non-overlapping chunking (preset)", "Any size-based method with overlap = 0.",
-         "Not a separate algorithm: set overlap to 0.", ["Smallest index"], ["Facts can be cut at boundaries"],
-         "Covered by setting overlap to 0 on the implemented methods.")
-_planned("html_structure", "HTML structure-based", "Cut at HTML headings, lists and tables.",
-         "Walk the DOM and split at structural tags, keeping tables whole.",
-         ["Follows the page's real structure"], ["Needs clean HTML"],
-         "Planned (Stage 3). HTML files are parsed to text today, but a DOM-aware splitter is not built.")
-_planned("section_based", "Document section-based", "One chunk per detected section.",
-         "Uses detected section titles from the parser as boundaries.",
-         ["Chunks match sections"], ["Sections vary wildly in size"],
-         "Planned (Stage 3). Section titles are detected for numbered PDF headings, but section chunking is not built.")
-_planned("topic_based", "Topic-based", "Cut at topic changes found by clustering or a topic model.",
-         "Cluster sentence embeddings or run a topic segmentation model.",
-         ["Topic-coherent chunks"], ["Heavy, unstable on short texts"],
-         "Planned (Stage 3). Not built.", requires=["embedding model"], creds=True)
-_planned("layout_aware", "Layout-aware", "Use reading order, columns and block types from a layout model.",
-         "Needs a layout-analysis parser (Docling, Unstructured, cloud document AI).",
-         ["Handles multi-column and complex pages"], ["Needs a layout parser"],
-         "Planned (Stage 5). Only the PyMuPDF parser exists.", requires=["layout parser"])
-_planned("code_aware", "Code-aware (tree-sitter)", "Cut at functions and classes using a syntax parser.",
-         "Parse source with tree-sitter and split at definition boundaries.",
-         ["Chunks are whole functions"], ["Per-language grammars"],
-         "Planned (Stage 5). Source code files are not yet an accepted upload type.", requires=["tree-sitter"])
-_planned("json_xml_structure", "JSON/XML structure-aware", "Cut at records, elements or array items.",
-         "Walk the tree and emit one chunk per record or subtree.",
-         ["Keeps records intact"], ["Needs schema awareness"],
-         "Planned (Stage 5). JSON is ingested as text; XML is not yet accepted.")
-_planned("contextual", "Contextual chunk enrichment", "An LLM writes a short 'where this fits' note for each chunk.",
-         "For each chunk, send the document (or a window) and the chunk to an LLM and prepend its one-sentence "
-         "context before embedding.",
-         ["Often a large retrieval gain"], ["LLM call per chunk; cost scales with corpus size"],
-         "Built as an index option, not a chunking-playground method: tick 'Contextual embedding' when you build an index (Indexes & Embeddings). It changes what is embedded, not where text is cut.",
-         requires=["LLM"], creds=True)
-_planned("proposition", "LLM proposition / atomic-fact chunking",
-         "An LLM rewrites text into self-contained factual statements.",
-         "Prompt an LLM to extract standalone propositions, then embed each one.",
-         ["Very precise retrieval units"], ["Expensive; may paraphrase or hallucinate"],
-         "Planned (Stage 3). Needs the generation service.", requires=["LLM"], creds=True)
-_planned("adaptive", "Adaptive (by document structure)", "Choose the chunking method per document.",
-         "Inspect each document (tables, headings, length) and pick a method.",
-         ["No one-size-fits-all choice"], ["Selection rules need evaluation"],
-         "Planned (Stage 6), after evaluation exists to justify the rules.")

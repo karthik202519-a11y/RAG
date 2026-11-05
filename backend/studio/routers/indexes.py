@@ -16,7 +16,7 @@ from ..embeddings import PROVIDERS, ProviderError, embed_texts, get_provider
 from ..models import AuditEvent, Document, DocumentVersion, Index, IndexChunk, Job, RetrievalRun, User
 from ..retrieval import DimensionMismatch, pipeline
 from ..security import current_user, get_project
-from ..vectorstores import faiss_store, qdrant_store, store_for
+from ..vectorstores import STORES, store_for
 
 router = APIRouter(tags=["indexes"])
 
@@ -31,8 +31,7 @@ def list_providers(user: User = Depends(current_user)) -> dict:
         emb.append({"id": p.id, "model": p.model or None, "available": ok, "detail": why,
                     "semantic": p.id != "local_hash"})
     return {"embedding": emb,
-            "vector_stores": [{"id": "qdrant", "available": True, "mode": qdrant_store.mode()},
-                              {"id": "faiss", "available": True, "mode": faiss_store.mode()}],
+            "vector_stores": [{"id": k, "available": m.status()[0], "mode": m.mode(), "detail": m.status()[1]} for k, m in STORES.items()],
             "generation": {"configured": generation.generation_status()[0], "detail": generation.generation_status()[1],
                            "default_model": settings.azure_chat_deployment or None, "models": generation.configured_models()},
             "vision": {"configured": generation.vision_status()[0], "detail": generation.vision_status()[1],
@@ -69,7 +68,7 @@ class IndexIn(BaseModel):
     provider: str
     document_ids: list[str] | None = Field(None, description="Default: every ready document in the project")
     section_prefix: bool = True
-    store: Literal["qdrant", "faiss"] = "qdrant"
+    store: Literal["qdrant", "faiss", "chroma", "lancedb", "pgvector"] = "qdrant"
     contextual: bool = Field(False, description="A chat model writes a situating sentence per text chunk, embedded with it (one call per chunk)")
     contextual_model: str | None = Field(None, max_length=100)
 
@@ -246,7 +245,7 @@ class RetrieveIn(BaseModel):
     n_queries: int = Field(3, ge=1, le=6)
     mmr: bool = False
     mmr_lambda: float = Field(0.6, ge=0.0, le=1.0, description="1 = pure relevance, 0 = pure diversity")
-    rerank: Literal["none", "llm"] = "none"
+    rerank: Literal["none", "llm", "cross_encoder"] = "none"
     rerank_candidates: int = Field(20, ge=2, le=50)
     llm_model: str | None = Field(None, max_length=100)
     document_ids: list[str] | None = None

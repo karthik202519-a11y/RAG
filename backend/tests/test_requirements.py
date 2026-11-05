@@ -6,7 +6,7 @@ from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
 DIST = {"jwt": "pyjwt", "dotenv": "python-dotenv", "bs4": "beautifulsoup4", "docx": "python-docx", "pptx": "python-pptx",
-        "qdrant_client": "qdrant-client", "rank_bm25": "rank-bm25", "multipart": "python-multipart", "botocore": "boto3"}
+        "qdrant_client": "qdrant-client", "rank_bm25": "rank-bm25", "multipart": "python-multipart", "botocore": "boto3", "PIL": "pillow", "faiss": "faiss-cpu"}
 
 
 def test_every_third_party_import_is_in_requirements():
