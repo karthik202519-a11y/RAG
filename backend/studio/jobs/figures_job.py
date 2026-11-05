@@ -5,6 +5,7 @@ beginning "[Figure description, page N]" so every chunker and the index builder 
 after every page (checkpoint): a cancel, a crash or a retry never repeats paid work, and never loses it.
 """
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from .. import generation
 from ..artifacts import get_store
@@ -55,30 +56,47 @@ def describe_figures(ctx: JobContext) -> None:
     done = skipped = tin = tout = 0
     notes: list[str] = []
     ctx.progress(0.02, f"{len(todo)} page(s) to describe")
-    for n, page in enumerate(todo):
-        if ctx.cancelled():
-            raise InterruptedError("cancelled")
-        num = page["pdf_page"]
-        key = f"{prefix}/visual_pages/page_{num}.png"
-        if not store.exists(key):
-            skipped += 1
-            notes.append(f"page {num}: no rendered image")
-            continue
-        res = generation.service.chat_vision(model, PROMPT, store.get(key))
-        text = res.text.strip()
-        page["items"] = [i for i in page["items"] if i.get("source") != "vision"]
-        if text:
-            page["items"].append({"type": "text", "text": f"{MARK} {num}] {text}", "source": "vision", "model": res.model})
-            done += 1
-        else:
-            skipped += 1
-            notes.append(f"page {num}: the model returned no text")
-        tin, tout = tin + res.prompt_tokens, tout + res.completion_tokens
-        store.put(ver.extraction_key, json.dumps(pages, ensure_ascii=False).encode("utf-8"))  # checkpoint
-        canon = build_canon(pages)
-        ver.char_count, ver.token_count = len(canon.text), count(canon.text)
-        db.commit()
-        ctx.progress(0.05 + 0.93 * (n + 1) / len(todo), f"described page {num} ({n + 1}/{len(todo)})")
+    ready, missing = [], []
+    for page in todo:
+        key = f"{prefix}/visual_pages/page_{page['pdf_page']}.png"
+        (ready if store.exists(key) else missing).append((page, key))
+    for page, _ in missing:
+        skipped += 1
+        notes.append(f"page {page['pdf_page']}: no rendered image")
+
+    def look(item):  # network only; the stored file and the extraction are touched from this thread's caller
+        page, key = item
+        return page, generation.service.chat_vision(model, PROMPT, store.get(key))
+
+    pool = ThreadPoolExecutor(max_workers=max(1, min(settings.vision_workers, len(ready) or 1)), thread_name_prefix="vision")
+    try:
+        futures = [pool.submit(look, it) for it in ready]
+        for n, fut in enumerate(futures):
+            while True:
+                if ctx.cancelled():
+                    raise InterruptedError("cancelled")
+                try:
+                    page, res = fut.result(timeout=1.0)
+                    break
+                except TimeoutError:
+                    continue
+            num = page["pdf_page"]
+            text = res.text.strip()
+            page["items"] = [i for i in page["items"] if i.get("source") != "vision"]
+            if text:
+                page["items"].append({"type": "text", "text": f"{MARK} {num}] {text}", "source": "vision", "model": res.model})
+                done += 1
+            else:
+                skipped += 1
+                notes.append(f"page {num}: the model returned no text")
+            tin, tout = tin + res.prompt_tokens, tout + res.completion_tokens
+            store.put(ver.extraction_key, json.dumps(pages, ensure_ascii=False).encode("utf-8"))  # checkpoint after every page
+            canon = build_canon(pages)
+            ver.char_count, ver.token_count = len(canon.text), count(canon.text)
+            db.commit()
+            ctx.progress(0.05 + 0.93 * (n + 1) / max(1, len(ready)), f"described page {num} ({n + 1}/{len(ready)})")
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     job.params = {**job.params, "result": {"described": done, "skipped": skipped, "model": model,
                                            "prompt_tokens": tin, "completion_tokens": tout, "notes": notes}}
     db.commit()

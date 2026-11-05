@@ -13,7 +13,7 @@ export default function CatalogPage() {
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
-  const cat = useQuery({ queryKey: ["catalog"], queryFn: () => api<Catalog>("/method-catalog") });
+  const cat = useQuery({ queryKey: ["catalog"], staleTime: Infinity, queryFn: () => api<Catalog>("/method-catalog") });
 
   const items = useMemo(() => (cat.data?.items ?? []).filter((m) =>
     (!category || m.category === category) && (!status || m.status === status) &&
@@ -44,7 +44,7 @@ export default function CatalogPage() {
                   <option value="unavailable">Not built yet</option>
                 </Select>
               </div>
-              <p className="text-[11px] text-dim">
+              <p className="text-xs text-dim">
                 {cat.data?.counts.implemented} run for real · {cat.data?.counts.unavailable} not built yet
               </p>
             </div>
@@ -55,7 +55,7 @@ export default function CatalogPage() {
                     className={clsx("flex w-full items-start justify-between gap-2 px-3 py-2 text-left hover:bg-surface-2", current?.id === m.id && "bg-accent-soft")}>
                     <span>
                       <span className="block text-sm font-medium">{m.name}</span>
-                      <span className="text-[11px] text-dim">{m.category}</span>
+                      <span className="text-xs text-dim">{m.category}</span>
                     </span>
                     <StatusBadge m={m} />
                   </button>

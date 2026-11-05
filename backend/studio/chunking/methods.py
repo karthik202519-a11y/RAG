@@ -8,6 +8,7 @@ import re
 from collections.abc import Callable
 
 from .canon import Canon
+from .context import get_embedder
 from .structure import build_chunks as structure_build
 from .structure import pick_captions, scrub, table_notes
 from .tokens import count, get_encoding
@@ -304,6 +305,58 @@ def table_rows(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
     return cuts, warn
 
 
+def parent_child(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
+    """Large parent passages (recursive split) divided into small child chunks. Children are what gets embedded and
+    searched; each remembers its parent, which small-to-big retrieval can return instead."""
+    parents, _ = recursive(canon, {"size": p["parent_size"], "overlap": 0, "unit": "tokens", "tokenizer": p["tokenizer"]})
+    cuts: list[Cut] = []
+    for par in parents:
+        kids, _ = _token_windows(canon, p["tokenizer"], p["child_size"], p["child_size"] - p["child_overlap"], par["start"], par["end"])
+        for k in kids:
+            if canon.text[k["start"]:k["end"]].strip():
+                cuts.append({**k, "parent": {"start": par["start"], "end": par["end"]}})
+    return cuts, [f"{len(parents)} parent passage(s) of up to {p['parent_size']} tokens, divided into {len(cuts)} child chunk(s) of {p['child_size']} tokens."]
+
+
+def semantic(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
+    """Cut where the meaning changes: embed every sentence, and start a new chunk where the similarity between
+    neighbouring sentences drops to or beyond the chosen percentile of all drops. Tables stay whole."""
+    import numpy as np
+
+    embed = get_embedder()
+    if embed is None:
+        raise ValueError("Semantic chunking needs an embedding provider, which this call did not supply.")
+    tok = p["tokenizer"]
+    units: list[tuple[int, int]] = []
+    for sp in canon.spans:
+        if sp.type == "table":
+            units.append((sp.start, sp.end))
+        else:
+            units.extend(_sentence_spans(canon.text, sp.start, sp.end))
+    units = [u for u in units if canon.text[u[0]:u[1]].strip()]
+    if len(units) < 2:
+        return [{"start": u[0], "end": u[1]} for u in units], ["Too little text to find meaning shifts."]
+    vecs = embed(p["provider"], [canon.text[a:b] for a, b in units])
+    sims = np.einsum("ij,ij->i", vecs[:-1], vecs[1:])           # similarity of each sentence to the next
+    dist = 1.0 - sims
+    cut_at = float(np.percentile(dist, p["breakpoint_percentile"]))
+    sizes = [count(canon.text[a:b], tok) for a, b in units]
+    chunks: list[list[int]] = [[0]]
+    tokens = sizes[0]
+    for i in range(1, len(units)):
+        boundary = dist[i - 1] >= cut_at and tokens >= p["min_tokens"]
+        if boundary or tokens + sizes[i] > p["max_tokens"]:
+            chunks.append([i])
+            tokens = sizes[i]
+        else:
+            chunks[-1].append(i)
+            tokens += sizes[i]
+    cuts = [{"start": units[c[0]][0], "end": units[c[-1]][1]} for c in chunks]
+    warn = [f"Cut where neighbouring-sentence distance exceeded {cut_at:.3f} (the {p['breakpoint_percentile']}th percentile of {len(dist)} gaps). "
+            f"{len(units)} sentences were embedded with {p['provider']}."]
+    return cuts, warn
+
+
 METHODS: dict[str, Callable[[Canon, dict], tuple[list[Cut], list[str]]]] = {
     "fixed_char": fixed_char,
     "fixed_token": fixed_token,
@@ -315,4 +368,6 @@ METHODS: dict[str, Callable[[Canon, dict], tuple[list[Cut], list[str]]]] = {
     "page_aware": page_aware,
     "structure_aware": structure_aware,
     "table_rows": table_rows,
+    "semantic": semantic,
+    "parent_child": parent_child,
 }

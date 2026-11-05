@@ -124,7 +124,7 @@ page-hit metrics (the diagram pages were already retrieved) but changed an answe
 
 ## Next slices (in order)
 
-1. Compare row-level tables, semantic and parent-child chunking in the Evaluation Center on a table-heavy question set.
+1. Compare row-level tables, semantic and parent-child chunking in the Evaluation Center on a table-heavy question set, and add UI controls for parent/neighbour expansion.
 2. LLM-judge faithfulness and human annotation; LLM-generated candidate questions with approval.
 3. Parser comparison lab (pdfplumber, Docling, OCR), pgvector and other vector stores, GraphRAG, pipeline builder.
 4. The 10,000-document load test, tracing, rate limits and a security review.

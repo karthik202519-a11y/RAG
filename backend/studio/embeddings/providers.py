@@ -51,7 +51,7 @@ class AzureOpenAIEmbedder:
         from openai import OpenAI
         ok, why = self.status()
         if not ok:
-            raise NotConfigured(why)
+            raise NotConfigured(f"Embedding provider 'azure_openai' is not configured. {why}")
         # Foundry endpoints with API version "1" use Azure's v1 route: plain OpenAI client at /openai/v1/.
         return OpenAI(base_url=settings.azure_endpoint.rstrip("/") + "/openai/v1/", api_key=settings.azure_api_key)
 

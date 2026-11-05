@@ -146,7 +146,7 @@ def test_create_validation(client, auth, project):
     assert r.status_code == 422 and "No ready documents" in r.json()["detail"]
     make_docs(client, auth, project)
     for chunking, msg in [({"method": "fixed_token", "params": {"size": 50, "overlap": 50}}, "Overlap"),
-                          ({"method": "semantic", "params": {}}, "not available"),
+                          ({"method": "topic_based", "params": {}}, "not available"),
                           ({"method": "nope", "params": {}}, "Unknown")]:
         r = client.post(f"/projects/{project['id']}/indexes", headers=auth, json={**body, "chunking": chunking})
         assert r.status_code == 422 and msg in r.json()["detail"], r.text
@@ -209,3 +209,73 @@ def test_embedding_vectors_are_unit_length_and_deterministic(client, auth):
     a = HashEmbedder().embed(["the quick brown fox", "lazy dogs sleep"]).vectors
     b = HashEmbedder().embed(["the quick brown fox", "lazy dogs sleep"]).vectors
     assert np.allclose(a, b) and np.allclose(np.linalg.norm(a, axis=1), 1.0)
+
+
+# ------------------------------------------------------------- parent-child and neighbour expansion
+PC = {"method": "parent_child", "params": {"parent_size": 90, "child_size": 25, "child_overlap": 4}}
+
+
+def test_parent_child_index_stores_parents_and_search_can_return_them(client, auth, project, docs):
+    idx = build(client, auth, project, chunking=PC)
+    plain = search(client, auth, idx, "Saturn V rocket Apollo lunar orbit", top_k=3)
+    child = plain["results"][0]
+    assert child["parent_id"] and child["tokens"] <= 40 and "expanded" not in child
+    big = search(client, auth, idx, "Saturn V rocket Apollo lunar orbit", top_k=3, expand="parent")
+    top = big["results"][0]
+    assert top["expanded"] == "parent" and top["tokens"] > child["tokens"] and "Saturn V" in top["text"]
+    assert "Saturn V" in top["child_text"] and len(top["text"]) > len(top["child_text"])
+    assert top["matched_children"] >= 1
+    ids = [r["parent_id"] for r in big["results"]]
+    assert len(ids) == len(set(ids))  # several children of one parent collapse into one result
+    assert [r["rank"] for r in big["results"]] == list(range(1, len(big["results"]) + 1))
+
+
+def test_parent_expansion_is_harmless_on_an_index_without_parents(client, auth, project, docs):
+    idx = build(client, auth, project)
+    r = search(client, auth, idx, "Saturn V rocket", top_k=3, expand="parent")
+    assert r["results"] and all(x.get("expanded") == "none" for x in r["results"])
+
+
+def test_neighbor_expansion_wraps_the_hit_in_adjacent_chunks(client, auth, project, docs):
+    idx = build(client, auth, project)
+    base = search(client, auth, idx, "Neil Armstrong and Buzz Aldrin walked on the Moon", top_k=1)["results"][0]
+    wide = search(client, auth, idx, "Neil Armstrong and Buzz Aldrin walked on the Moon", top_k=1, expand="neighbors", neighbors=1)["results"][0]
+    assert wide["expanded"] == "neighbors" and len(wide["neighbor_chunks"]) >= 2 and base["chunk_index"] in wide["neighbor_chunks"]
+    assert wide["tokens"] > base["tokens"] and wide["child_text"] == base["text"] and base["text"] in wide["text"]
+
+
+def test_expansion_flows_through_the_pipeline_and_answers(client, auth, project, docs, monkeypatch):
+    from studio.config import settings
+    from studio.generation import service as gen
+    idx = build(client, auth, project, chunking=PC)
+    r = client.post(f"/indexes/{idx['id']}/retrieve", headers=auth, json={"query": "Saturn V rocket Apollo", "expand": "parent", "top_k": 2}).json()
+    assert r["results"][0]["expanded"] == "parent" and any(s["stage"] == "expand" for s in r["stages"])
+    monkeypatch.setattr(settings, "azure_endpoint", "https://example.invalid")
+    monkeypatch.setattr(settings, "azure_api_key", "not-a-real-key")
+    monkeypatch.setattr(settings, "azure_chat_deployment", "fake-chat")
+    seen = {}
+
+    def fake(model, messages, temperature, max_output_tokens):
+        seen["prompt"] = messages[1]["content"]
+        return gen.ChatResult("The Saturn V [1].", 10, 5, 0, "stop", model)
+
+    monkeypatch.setattr(gen, "chat_complete", fake)
+    a = client.post(f"/indexes/{idx['id']}/answer", headers=auth, json={"question": "Which rocket?", "expand": "parent", "top_k": 2}).json()
+    assert a["context_passages"][0]["text"] == r["results"][0]["text"] or len(seen["prompt"]) > 300  # the model saw the larger passage
+    assert client.post(f"/indexes/{idx['id']}/search", headers=auth, json={"query": "x", "expand": "bogus"}).status_code == 422
+
+
+def test_parent_child_validation_and_deletion(client, auth, project, docs):
+    from sqlalchemy import select
+    from studio import db as dbmod
+    from studio.models import IndexParent
+    for params, msg in [({"parent_size": 50, "child_size": 60}, "smaller than parent"), ({"child_size": 30, "child_overlap": 30}, "Child overlap")]:
+        r = client.post(f"/projects/{project['id']}/indexes", headers=auth, json={"name": "x", "provider": "local_hash",
+                        "chunking": {"method": "parent_child", "params": params}})
+        assert r.status_code == 422 and msg in r.json()["detail"], r.text
+    idx = build(client, auth, project, chunking=PC)
+    with dbmod.SessionLocal() as db:
+        assert db.scalars(select(IndexParent).where(IndexParent.index_id == idx["id"])).all()
+    assert client.delete(f"/indexes/{idx['id']}", headers=auth).status_code == 204
+    with dbmod.SessionLocal() as db:
+        assert not db.scalars(select(IndexParent).where(IndexParent.index_id == idx["id"])).all()  # parents go with the index

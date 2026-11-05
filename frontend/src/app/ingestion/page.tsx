@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Trash2, UploadCloud, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -28,7 +28,7 @@ export default function IngestionPage() {
   const stats = useQuery({ queryKey: ["stats", pid], enabled: !!pid, refetchInterval: 5000, queryFn: () => api<IngestionStats>(`/projects/${pid}/ingestion-stats`) });
   const fmts = useQuery({ queryKey: ["formats"], queryFn: () => api<{ extensions: string[]; max_upload_mb: number }>("/supported-formats") });
   const docs = useQuery({
-    queryKey: ["docs", pid, filters], enabled: !!pid, refetchInterval: 4000,
+    queryKey: ["docs", pid, filters], enabled: !!pid, refetchInterval: 4000, placeholderData: keepPreviousData,
     queryFn: () => api<{ total: number; items: Doc[] }>(`/projects/${pid}/documents?` + new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString()),
   });
   const jobsQ = useQuery({ queryKey: ["jobs", pid], enabled: !!pid, queryFn: () => api<{ items: Job[] }>(`/projects/${pid}/ingestion-jobs?limit=100`) });
@@ -89,7 +89,7 @@ export default function IngestionPage() {
         <Stat label="Pages" value={fmt.n(s?.pages)} />
         <Stat label="Tokens" value={fmt.n(s?.tokens)} />
         <Stat label="Storage" value={s ? fmt.bytes(s.storage_bytes) : "n/a"} />
-        <Stat label="Throughput" value={s?.throughput_pages_per_second != null ? `${s.throughput_pages_per_second} p/s` : "n/a"}
+        <Stat label="Throughput" value={s?.throughput_pages_per_second != null ? `${s.throughput_pages_per_second} pages/s` : "n/a"}
           sub={s?.extraction_success_rate != null ? `${fmt.pct(s.extraction_success_rate)} success` : undefined} />
       </div>
 
@@ -105,7 +105,7 @@ export default function IngestionPage() {
               <Button className="mt-2" onClick={() => fileInput.current?.click()}>Choose files</Button>
               <input ref={fileInput} type="file" multiple hidden aria-label="Choose files to upload"
                 accept={(fmts.data?.extensions ?? []).map((e) => `.${e}`).join(",")} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-              <p className="mt-2 text-[11px] text-dim">{(fmts.data?.extensions ?? []).join(", ")} · up to {fmts.data?.max_upload_mb ?? "…"} MB each</p>
+              <p className="mt-2 text-xs text-dim">{(fmts.data?.extensions ?? []).join(", ")} · up to {fmts.data?.max_upload_mb ?? "…"} MB each</p>
             </div>
             {staged.length > 0 && (
               <ul className="mt-3 space-y-1 text-sm">
@@ -161,7 +161,7 @@ export default function IngestionPage() {
                         <div className="h-1.5 overflow-hidden rounded bg-surface-2" role="progressbar" aria-valuenow={Math.round(j.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`Progress for ${j.filename}`}>
                           <div className="h-full bg-accent transition-all" style={{ width: `${Math.max(3, j.progress * 100)}%` }} />
                         </div>
-                        <div className="mt-0.5 flex justify-between text-[11px] text-dim"><span>{j.stage ?? "waiting"}</span><span>attempt {j.attempts}/{j.max_attempts}</span></div>
+                        <div className="mt-0.5 flex justify-between text-xs text-dim"><span>{j.stage ?? "waiting"}</span><span>attempt {j.attempts}/{j.max_attempts}</span></div>
                       </div>
                     )}
                     {j.error && <p className="mt-1 break-words text-xs text-bad">{j.error}</p>}
@@ -198,7 +198,7 @@ export default function IngestionPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-border text-xs text-dim">
-                    <tr><th className="px-4 py-2 font-medium">Name</th><th className="px-2 font-medium">Status</th><th className="px-2 text-right font-medium">Pages</th><th className="px-2 text-right font-medium">Tokens</th><th className="px-2 text-right font-medium">Tables</th><th className="px-2 font-medium">Ver.</th><th /></tr>
+                    <tr><th className="px-4 py-2 font-medium">Name</th><th className="px-2 font-medium">Status</th><th className="px-2 text-right font-medium">Pages</th><th className="px-2 text-right font-medium">Tokens</th><th className="px-2 text-right font-medium">Tables</th><th className="px-2 font-medium">Ver.</th><th><span className="sr-only">Actions</span></th></tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {docs.data?.items.map((d) => {
@@ -253,7 +253,7 @@ function Figures({ doc }: { doc: Doc }) {
       <div className="flex flex-wrap gap-1">
         {f.figures.map((x) => (
           <button key={x.page} onClick={() => { setOpen(x.page); setImg(null); }} aria-label={`Figure page ${x.page}${x.described ? " described" : ""}`}
-            className={`rounded border px-1.5 py-0.5 font-mono text-[11px] ${open === x.page ? "border-accent bg-accent-soft" : "border-border"} ${x.described ? "text-good" : "text-dim"}`}>
+            className={`rounded border px-1.5 py-0.5 font-mono text-xs ${open === x.page ? "border-accent bg-accent-soft" : "border-border"} ${x.described ? "text-good" : "text-dim"}`}>
             {x.page}{x.described ? " ✓" : ""}
           </button>
         ))}
@@ -354,7 +354,7 @@ function DocPanel({ id, onClose }: { id: string; onClose: () => void }) {
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-dim">Extracted text preview</h3>
           {!ready ? <p className="text-sm text-dim">Available once extraction is ready.</p> : content.isLoading ? <Spinner /> : (
             <>
-              <p className="mb-1 text-[11px] text-dim">{content.data?.pages} page(s){content.data?.needs_vision_pages.length ? ` · ${content.data.needs_vision_pages.length} diagram/chart page(s) flagged` : ""} · showing first 4,000 characters</p>
+              <p className="mb-1 text-xs text-dim">{content.data?.pages} page(s){content.data?.needs_vision_pages.length ? ` · ${content.data.needs_vision_pages.length} diagram/chart page(s) flagged` : ""} · showing first 4,000 characters</p>
               <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-surface-2 p-3 font-mono text-xs">{content.data?.text.slice(0, 4000)}</pre>
             </>
           )}

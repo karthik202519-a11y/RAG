@@ -50,7 +50,7 @@ export function MethodDetail({ m, names }: { m: Method; names?: Record<string, s
           <dl className="space-y-1.5">
             {m.params.map((p) => (
               <div key={p.name}>
-                <dt className="font-medium">{p.label} <span className="font-mono text-[11px] text-dim">{p.name}</span></dt>
+                <dt className="font-medium">{p.label} <span className="font-mono text-xs text-dim">{p.name}</span></dt>
                 <dd className="text-dim">{p.help}{p.min != null && p.max != null && ` Range ${p.min}–${p.max}.`} Default {String(p.default)}.</dd>
               </div>
             ))}

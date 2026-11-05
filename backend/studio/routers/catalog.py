@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from ..registry import registry
 
@@ -6,7 +6,8 @@ router = APIRouter(prefix="/method-catalog", tags=["method-catalog"])
 
 
 @router.get("")
-def list_methods(category: str | None = None, status: str | None = None, q: str | None = None) -> dict:
+def list_methods(response: Response, category: str | None = None, status: str | None = None, q: str | None = None) -> dict:
+    response.headers["Cache-Control"] = "public, max-age=300"  # the registry only changes with a release
     items = registry.list(category)
     if status:
         items = [m for m in items if m.status == status]
@@ -19,7 +20,8 @@ def list_methods(category: str | None = None, status: str | None = None, q: str 
 
 
 @router.get("/{method_id}")
-def read_method(method_id: str) -> dict:
+def read_method(method_id: str, response: Response) -> dict:
+    response.headers["Cache-Control"] = "public, max-age=300"
     m = registry.get(method_id)
     if m is None:
         raise HTTPException(404, "Unknown method")

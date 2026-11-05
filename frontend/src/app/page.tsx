@@ -1,65 +1,79 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Badge, Card, Empty, ErrorBox, PageHeader, Spinner, Stat, fmt, statusTone } from "@/components/ui";
-import { api, type Catalog, type IngestionStats, type Job } from "@/lib/api";
+import { api, type EvalDatasetInfo, type IndexInfo, type IngestionStats, type Job } from "@/lib/api";
 import { useProject } from "@/lib/project";
+
+const JOB_LABEL: Record<string, string> = {
+  run_eval: "Evaluation run", build_index: "Index build", describe_figures: "Figure descriptions", ingest_document: "Parse document",
+};
 
 export default function Dashboard() {
   const { project, loading } = useProject();
-  const stats = useQuery({
-    queryKey: ["stats", project?.id], enabled: !!project, refetchInterval: 4000,
-    queryFn: () => api<IngestionStats>(`/projects/${project!.id}/ingestion-stats`),
-  });
-  const jobs = useQuery({
-    queryKey: ["jobs-recent", project?.id], enabled: !!project, refetchInterval: 4000,
-    queryFn: () => api<{ items: Job[] }>(`/projects/${project!.id}/ingestion-jobs?limit=8`),
-  });
-  const cat = useQuery({ queryKey: ["catalog"], queryFn: () => api<Catalog>("/method-catalog") });
+  const pid = project?.id;
+  const stats = useQuery({ queryKey: ["stats", pid], enabled: !!pid, refetchInterval: 4000, queryFn: () => api<IngestionStats>(`/projects/${pid}/ingestion-stats`) });
+  const jobs = useQuery({ queryKey: ["jobs-recent", pid], enabled: !!pid, refetchInterval: 4000, queryFn: () => api<{ items: Job[] }>(`/projects/${pid}/ingestion-jobs?limit=8`) });
+  const indexes = useQuery({ queryKey: ["indexes", pid], enabled: !!pid, queryFn: () => api<IndexInfo[]>(`/projects/${pid}/indexes`) });
+  const datasets = useQuery({ queryKey: ["eval-datasets", pid], enabled: !!pid, queryFn: () => api<EvalDatasetInfo[]>(`/projects/${pid}/eval-datasets`) });
 
   if (loading) return <Spinner />;
   if (!project) {
     return <Empty title="Welcome to RAG Learning Studio">Create a project to begin. <Link className="text-accent underline" href="/projects">Go to Projects</Link></Empty>;
   }
   const s = stats.data;
+  const ready = (indexes.data ?? []).filter((i) => i.status === "ready").length;
+  const runs = (datasets.data ?? []).reduce((a, d) => a + d.runs, 0);
+  const next = !s?.documents ? { href: "/ingestion", text: "Upload a document" } : !indexes.data?.length ? { href: "/indexes", text: "Build an index" }
+    : !datasets.data?.length ? { href: "/evaluation", text: "Create an evaluation dataset" } : { href: "/retrieval", text: "Ask a question" };
+
+  const steps = [
+    { href: "/ingestion", label: "Documents", n: s?.documents, sub: s ? `${fmt.n(s.pages)} pages · ${fmt.n(s.tokens)} tokens` : "" },
+    { href: "/indexes", label: "Indexes", n: indexes.data?.length, sub: `${ready} ready` },
+    { href: "/retrieval", label: "Retrieval", n: undefined, sub: "ask and compare" },
+    { href: "/evaluation", label: "Evaluation", n: datasets.data?.length, sub: `${runs} run${runs === 1 ? "" : "s"}` },
+  ];
+
   return (
-    <div className="mx-auto max-w-6xl">
-      <PageHeader title={project.name} subtitle={project.description || "Project dashboard"} />
+    <div className="mx-auto max-w-6xl space-y-5">
+      <PageHeader title={project.name} subtitle={project.description || "Where this project stands, from documents to measured results."}
+        actions={<Link href={next.href} className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3.5 text-sm font-medium text-accent-ink hover:brightness-110">{next.text}<ArrowRight className="size-4" aria-hidden /></Link>} />
       <ErrorBox error={stats.error} />
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Documents" value={fmt.n(s?.documents)} sub={s ? `${s.versions} versions` : undefined} />
-        <Stat label="Pages" value={fmt.n(s?.pages)} sub={s ? `${fmt.n(s.tables)} tables` : undefined} />
-        <Stat label="Tokens extracted" value={fmt.n(s?.tokens)} sub={s ? `${fmt.n(s.characters)} characters` : undefined} />
-        <Stat label="Queue depth" value={fmt.n(s?.queue_depth)} sub={s?.extraction_success_rate != null ? `${fmt.pct(s.extraction_success_rate)} extraction success` : "no finished jobs yet"} />
-      </div>
+
+      <ol className="grid gap-3 md:grid-cols-4" aria-label="Pipeline progress">
+        {steps.map((st, i) => (
+          <li key={st.label}>
+            <Link href={st.href} className="block h-full rounded-lg border border-border bg-surface px-4 py-3 hover:bg-surface-2">
+              <div className="flex items-center justify-between text-xs text-dim"><span>{st.label}</span>{i < steps.length - 1 && <ArrowRight className="size-3.5 max-md:hidden" aria-hidden />}</div>
+              <div className="mt-1 font-mono text-2xl font-semibold tabular-nums">{st.n ?? "·"}</div>
+              <div className="text-xs text-dim">{st.sub}</div>
+            </Link>
+          </li>
+        ))}
+      </ol>
+
       <div className="grid gap-5 lg:grid-cols-3">
-        <Card title="Recent jobs" className="lg:col-span-2" actions={<Link href="/ingestion" className="text-xs text-accent underline">Open ingestion</Link>}>
+        <Card title="Recent activity" className="lg:col-span-2" pad={false} actions={<Link href="/ingestion" className="text-xs text-accent underline">Open ingestion</Link>}>
           {jobs.data?.items.length ? (
             <ul className="divide-y divide-border">
               {jobs.data.items.map((j) => (
-                <li key={j.id} className="flex items-center justify-between gap-3 py-2">
-                  <span className="truncate">{j.filename ?? j.kind}</span>
-                  <span className="flex items-center gap-2">
+                <li key={j.id} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
+                  <span className="min-w-0 truncate"><span className="text-dim">{JOB_LABEL[j.kind] ?? j.kind}</span>{j.filename ? ` · ${j.filename}` : ""}</span>
+                  <span className="flex shrink-0 items-center gap-2">
                     {j.status === "running" && <span className="font-mono text-xs text-dim">{Math.round(j.progress * 100)}%</span>}
                     <Badge tone={statusTone(j.status)}>{j.status}</Badge>
                   </span>
                 </li>
               ))}
             </ul>
-          ) : <p className="text-sm text-dim">No jobs yet. <Link className="text-accent underline" href="/ingestion">Upload a document</Link> to start.</p>}
+          ) : <p className="p-4 text-sm text-dim">Nothing has run yet. <Link className="text-accent underline" href="/ingestion">Upload a document</Link> to start.</p>}
         </Card>
-        <Card title="What works today">
-          <ul className="space-y-1.5 text-sm">
-            <li>Upload and parse PDF, DOCX, PPTX, XLSX, HTML, Markdown, TXT, CSV, JSON and XML, with background jobs you can retry and cancel</li>
-            <li>Chunking Playground: {cat.data?.items.filter((m) => m.category === "chunking" && m.status !== "unavailable").length ?? "…"} chunkers, compared side by side</li>
-            <li>Embeddings into Qdrant, dense / BM25 / hybrid retrieval, query transforms, MMR and LLM reranking</li>
-            <li>Grounded answers with checked citations; vision descriptions of diagram pages</li>
-            <li>Evaluation Center: labelled questions, recall / MRR / nDCG with confidence intervals, paired run comparison</li>
-            <li>{cat.data?.counts.implemented ?? "…"} methods run for real; {cat.data?.counts.unavailable ?? "…"} are described but not built</li>
-          </ul>
-          <p className="mt-3 text-xs text-dim">Not built: the parser comparison lab, GraphRAG, pipeline builder, experiment studio, tracing and settings screens (greyed in the sidebar).</p>
-        </Card>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
+          <Stat label="Queue depth" value={fmt.n(s?.queue_depth)} sub={s?.extraction_success_rate != null ? `${fmt.pct(s.extraction_success_rate)} of parses succeeded` : "no finished parses yet"} />
+          <Stat label="Tables found" value={fmt.n(s?.tables)} sub={s ? `${fmt.bytes(s.storage_bytes)} stored` : undefined} />
+        </div>
       </div>
     </div>
   );

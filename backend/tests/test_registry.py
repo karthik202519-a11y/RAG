@@ -45,7 +45,7 @@ def test_defaults_are_valid(method):
 
 def test_unavailable_method_cannot_run():
     with pytest.raises(ChunkingError, match="not available"):
-        validate_params("semantic", {})
+        validate_params("topic_based", {})
 
 
 def test_unknown_method_and_params_are_rejected():

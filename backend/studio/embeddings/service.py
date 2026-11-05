@@ -6,6 +6,9 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from concurrent.futures import ThreadPoolExecutor
+
+from ..config import settings
 from ..models import EmbeddingCache
 from .providers import get_provider
 
@@ -37,19 +40,26 @@ def embed_texts(db: Session, provider_id: str, texts: list[str], progress=None) 
     todo = [(k, t) for k, t in dict.fromkeys(zip(keys, texts)) if k not in found]
     tokens, spent = 0, 0.0
     step = 64
-    for i in range(0, len(todo), step):
-        chunk = todo[i:i + step]
+    batches = [todo[i:i + step] for i in range(0, len(todo), step)]
+
+    def call(batch):  # network only: sessions are not thread-safe, so no database access in here
         t0 = time.perf_counter()
-        res = provider.embed([t for _, t in chunk])
-        spent += time.perf_counter() - t0
-        tokens += res.tokens
-        for (k, _), vec in zip(chunk, res.vectors):
-            found[k] = vec
-            db.merge(EmbeddingCache(key=k, provider=provider.id, model=provider.model, dim=len(vec),
-                                    vector=np.asarray(vec, dtype="<f4").tobytes()))
-        db.commit()
-        if progress:
-            progress(min(1.0, (i + step) / max(1, len(todo))))
+        return batch, provider.embed([t for _, t in batch]), time.perf_counter() - t0
+
+    # Batches are independent requests: send several at once. Results come back in order and are
+    # written to the cache from this thread only.
+    workers = max(1, min(settings.embed_concurrency, len(batches)))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="embed") as pool:
+        for n, (batch, res, secs) in enumerate(pool.map(call, batches), 1):
+            spent += secs
+            tokens += res.tokens
+            for (k, _), vec in zip(batch, res.vectors):
+                found[k] = vec
+                db.merge(EmbeddingCache(key=k, provider=provider.id, model=provider.model, dim=len(vec),
+                                        vector=np.asarray(vec, dtype="<f4").tobytes()))
+            db.commit()
+            if progress:
+                progress(n / len(batches))
     fetched = {k for k, _ in todo}
     hits = sum(1 for k in keys if k not in fetched)
     vectors = np.vstack([found[k] for k in keys]) if keys else np.zeros((0, 0), dtype=np.float32)

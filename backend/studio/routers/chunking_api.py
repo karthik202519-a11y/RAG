@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..chunking import ChunkingError, run_chunking
+from ..chunking.context import use_embedder
+from ..embeddings import ProviderError, embed_texts
 from ..db import get_db
 from ..models import User
 from ..security import current_user
@@ -42,9 +44,12 @@ def chunking_preview(body: PreviewIn, user: User = Depends(current_user), db: Se
     results, doc_text = [], None
     for cfg in body.configs:
         try:
-            r = run_chunking(pages, cfg.method, cfg.params, body.price_per_million_tokens)
+            with use_embedder(lambda prov, texts: embed_texts(db, prov, texts).vectors):
+                r = run_chunking(pages, cfg.method, cfg.params, body.price_per_million_tokens)
         except ChunkingError as e:
             raise HTTPException(422, f"{cfg.label or cfg.method}: {e}") from None
+        except ProviderError as e:
+            raise HTTPException(409, f"{cfg.label or cfg.method}: {e}") from None
         doc_text = r.pop("doc_text")
         for c in r["chunks"]:  # the UI slices the shared document text, so don't send it twice
             if c["start"] is not None and c["text"] == doc_text[c["start"]:c["end"]]:

@@ -9,6 +9,7 @@ _TMP = Path(tempfile.mkdtemp(prefix="studio-tests-"))
 os.environ["STUDIO_DATA_DIR"] = str(_TMP)
 os.environ["DATABASE_URL"] = f"sqlite:///{(_TMP / 'boot.db').as_posix()}"
 os.environ["STUDIO_JOB_BACKEND"] = "thread"
+os.environ["STUDIO_SKIP_WARMUP"] = "1"
 os.environ["STUDIO_SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ.pop("REDIS_URL", None)
 os.environ.pop("S3_ENDPOINT", None)

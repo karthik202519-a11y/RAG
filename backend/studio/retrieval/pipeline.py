@@ -18,6 +18,7 @@ from ..generation import service as gen
 from ..models import Index
 from ..vectorstores import qdrant_store
 from . import service
+from .expand import expand_results
 
 TRANSFORMS = ("none", "rewrite", "multi_query", "hyde", "decompose")
 
@@ -128,7 +129,8 @@ def mmr(index: Index, hits: list[dict], qvec: np.ndarray, top_k: int, lam: float
 
 def run(db: Session, index: Index, question: str, *, mode: str = "dense", top_k: int = 5, transform: str = "none",
         n_queries: int = 3, mmr_on: bool = False, mmr_lambda: float = 0.6, rerank: str = "none", rerank_candidates: int = 20,
-        llm_model: str | None = None, document_ids=None, types=None, score_threshold=None, rrf_k: int = 60) -> dict:
+        llm_model: str | None = None, document_ids=None, types=None, score_threshold=None, rrf_k: int = 60,
+        expand: str = "none", neighbors: int = 1) -> dict:
     stages: list[dict] = []
     llm_tokens = 0
     cand = max(top_k * 4, rerank_candidates if rerank != "none" else 0, 20)
@@ -206,6 +208,12 @@ def run(db: Session, index: Index, question: str, *, mode: str = "dense", top_k:
     final = fused
     if score_threshold is not None:
         final = [h for h in final if h["contributions"].get("dense", {}).get("score", h["score"]) >= score_threshold]
+    if expand != "none":
+        t0 = time.perf_counter()
+        before = len(final)
+        final = expand_results(db, final, expand, neighbors, limit=top_k)
+        stages.append({"stage": "expand", "method": expand, "hits_in": before, "hits_out": len(final),
+                       "ms": round((time.perf_counter() - t0) * 1000, 1)})
     final = final[:top_k]
     for i, h in enumerate(final, 1):
         h["final_rank"] = i

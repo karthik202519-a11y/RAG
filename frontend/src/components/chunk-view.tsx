@@ -51,7 +51,10 @@ export const ChunkedText = memo(function ChunkedText({
           const overlap = s.cover.length > 1;
           const isSel = selected != null && s.cover.includes(selected);
           return (
-            <span key={i} onClick={() => onSelect(selected != null && s.cover.includes(selected) && s.cover.length > 1
+            <span key={i} role="button" tabIndex={0} aria-label={overlap ? `Chunks ${s.cover.map((c) => `#${c}`).join(" and ")} overlap here` : `Chunk #${first}`}
+              aria-pressed={isSel}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); (e.currentTarget as HTMLElement).click(); } }}
+              onClick={() => onSelect(selected != null && s.cover.includes(selected) && s.cover.length > 1
               ? s.cover[(s.cover.indexOf(selected) + 1) % s.cover.length] : first)}
               title={overlap ? `Overlap of chunks ${s.cover.map((c) => `#${c}`).join(" and ")}` : `Chunk #${first}`}
               style={{ background: `var(--c${first % 8})` }}

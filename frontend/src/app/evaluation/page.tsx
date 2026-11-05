@@ -1,11 +1,12 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Download, FlaskConical, Plus } from "lucide-react";
+import { Download, FlaskConical, Plus, X } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useEffect, useRef, useState } from "react";
+import { RunsBarChart } from "@/components/lazy-charts";
+import { SERIES_COLORS } from "@/components/charts-colors";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner, statusTone } from "@/components/ui";
 import { API_URL, api, getToken, type Doc, type EvalCompare, type EvalDatasetDetail, type EvalDatasetInfo, type EvalRunInfo, type IndexInfo, type MetricAgg } from "@/lib/api";
 import { useProject } from "@/lib/project";
@@ -69,6 +70,7 @@ function DatasetView({ id, pid }: { id: string; pid: string }) {
   const [tab, setTab] = useState<"questions" | "runs" | "compare">("runs");
   const [picked, setPicked] = useState<string[]>([]);
   const [open, setOpen] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState<boolean | null>(null);
   const ds = useQuery({ queryKey: ["eval-ds", id], queryFn: () => api<EvalDatasetDetail>(`/eval-datasets/${id}`) });
   const runs = useQuery({
     queryKey: ["eval-runs", id], queryFn: () => api<EvalRunInfo[]>(`/eval-datasets/${id}/runs`),
@@ -77,6 +79,7 @@ function DatasetView({ id, pid }: { id: string; pid: string }) {
   if (ds.isLoading) return <Spinner />;
   const d = ds.data;
   if (!d) return <ErrorBox error={ds.error} />;
+  const showForm = formOpen ?? (runs.data?.length === 0);
   const togglePick = (rid: string) => setPicked((p) => (p.includes(rid) ? p.filter((x) => x !== rid) : [...p, rid]));
 
   return (
@@ -96,7 +99,15 @@ function DatasetView({ id, pid }: { id: string; pid: string }) {
       {tab === "questions" && <Questions d={d} pid={pid} onChange={() => { void qc.invalidateQueries({ queryKey: ["eval-ds", id] }); void qc.invalidateQueries({ queryKey: ["eval-datasets", pid] }); }} />}
       {tab === "runs" && (
         <>
-          <RunForm id={id} pid={pid} onStarted={() => { void qc.invalidateQueries({ queryKey: ["eval-runs", id] }); void qc.invalidateQueries({ queryKey: ["eval-ds", id] }); }} disabled={d.questions.length === 0} />
+          {showForm ? (
+            <div className="space-y-2">
+              <RunForm id={id} pid={pid} onStarted={() => { setFormOpen(false); void qc.invalidateQueries({ queryKey: ["eval-runs", id] }); void qc.invalidateQueries({ queryKey: ["eval-ds", id] }); }} disabled={d.questions.length === 0} />
+              {(runs.data?.length ?? 0) > 0 && <Button size="sm" variant="ghost" onClick={() => setFormOpen(false)}>Hide the run form</Button>}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3"><Button variant="primary" onClick={() => setFormOpen(true)}><FlaskConical className="size-4" aria-hidden /> New run</Button>
+              <span className="text-xs text-dim">Results below. Pick two or more runs to compare them.</span></div>
+          )}
           <RunsTable runs={runs.data ?? []} picked={picked} onPick={togglePick} onOpen={setOpen} onCompare={() => setTab("compare")} />
           {open && <RunDetail id={open} onClose={() => setOpen(null)} />}
         </>
@@ -130,7 +141,7 @@ function Questions({ d, pid, onChange }: { d: EvalDatasetDetail; pid: string; on
       <Card title={`Questions (${d.questions.length})`} pad={false} actions={<Button size="sm" onClick={() => split.mutate()} loading={split.isPending} title="60% train, 20% validation, 20% test, seeded">Assign splits</Button>}>
         {d.questions.length === 0 ? <div className="p-4"><Empty title="No questions yet">Add one, or import a JSON list.</Empty></div> : (
           <div className="max-h-[60vh] overflow-auto"><table className="w-full text-left text-sm">
-            <thead className="sticky top-0 border-b border-border bg-surface text-xs text-dim"><tr><th className="px-3 py-2">Question</th><th>Type</th><th>Evidence</th><th>Split</th><th /></tr></thead>
+            <thead className="sticky top-0 border-b border-border bg-surface text-xs text-dim"><tr><th className="px-3 py-2">Question</th><th>Type</th><th>Evidence</th><th>Split</th><th><span className="sr-only">Actions</span></th></tr></thead>
             <tbody className="divide-y divide-border">{d.questions.map((q) => (
               <tr key={q.id}><td className="max-w-md px-3 py-1.5">{q.question}{!q.answerable && <Badge tone="warn">unanswerable</Badge>}</td><td className="text-xs text-dim">{q.qtype}</td>
                 <td className="text-xs font-mono">{q.evidence.map((e) => `${e.document || "any"} p${e.pages.join(",") || "*"}`).join(" + ") || "-"}</td>
@@ -216,7 +227,7 @@ function RunsTable({ runs, picked, onPick, onOpen, onCompare }: { runs: EvalRunI
     <Card title={`Runs (${runs.length})`} pad={false} actions={<Button size="sm" disabled={picked.length < 2} onClick={onCompare}>Compare {picked.length || ""} selected</Button>}>
       {runs.length === 0 ? <p className="p-4 text-sm text-dim">No runs yet.</p> : (
         <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-          <thead className="border-b border-border text-xs text-dim"><tr><th className="px-3 py-2" /><th>Run</th><th>Status</th><th>Hit</th><th>MRR</th><th>nDCG</th><th>Recall</th><th>p50 ms</th></tr></thead>
+          <thead className="border-b border-border text-xs text-dim"><tr><th className="px-3 py-2"><span className="sr-only">Select for comparison</span></th><th>Run</th><th>Status</th><th>Hit</th><th>MRR</th><th>nDCG</th><th>Recall</th><th>p50 ms</th></tr></thead>
           <tbody className="divide-y divide-border">{runs.map((r) => {
             const m = r.metrics?.retrieval;
             return (<tr key={r.id} className="hover:bg-surface-2">
@@ -234,6 +245,13 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const q = useQuery({ queryKey: ["eval-run", id], queryFn: () => api<EvalRunInfo>(`/eval-runs/${id}`), refetchInterval: (x) => (x.state.data?.status === "running" || x.state.data?.status === "queued" ? 1500 : false) });
   const [onlyMisses, setOnlyMisses] = useState(false);
   const r = q.data;
+  const root = useRef<HTMLDivElement>(null);
+  const shown = !!r;
+  useEffect(() => {
+    if (!shown) return;
+    root.current?.scrollIntoView({ behavior: "smooth", block: "start" });  // the detail opens below a long table: bring it into view
+    root.current?.focus({ preventScroll: true });                          // and tell keyboard / screen-reader users where they are
+  }, [shown]);
   if (!r) return <Card><Spinner /></Card>;
   const m = r.metrics;
   const download = async (fmt: "json" | "csv") => {
@@ -242,6 +260,7 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
     const a = document.createElement("a"); a.href = url; a.download = `eval-${id}.${fmt}`; a.click(); URL.revokeObjectURL(url);
   };
   return (
+    <div ref={root} tabIndex={-1} aria-label={`Details of ${r.label}`} className="scroll-mt-16 outline-none">
     <Card title={r.label} actions={<><Button size="sm" onClick={() => download("csv")}><Download className="size-3.5" aria-hidden /> CSV</Button><Button size="sm" onClick={() => download("json")}>JSON</Button><Button size="sm" variant="ghost" onClick={onClose}>Close</Button></>}>
       <ErrorBox error={r.error ? new Error(r.error) : null} />
       {r.status !== "done" ? <Spinner label={`Running ${r.job?.stage ?? ""}`} /> : m && (
@@ -252,18 +271,18 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <div key={k} className="rounded-lg border border-border px-3 py-2" title={HELP[k]}>
                 <div className="text-xs text-dim">{METRIC_LABELS[k] ?? k}</div>
                 <div className="font-mono text-lg font-semibold">{v.mean == null ? <span className="text-sm text-dim">not available</span> : v.mean.toFixed(3)}</div>
-                <div className="text-[11px] text-dim">n={v.n} · 95% CI {v.ci95 ? `${v.ci95[0].toFixed(2)}–${v.ci95[1].toFixed(2)}` : "needs ≥10"}</div>
+                <div className="text-xs text-dim">n={v.n} · 95% CI {v.ci95 ? `${v.ci95[0].toFixed(2)}–${v.ci95[1].toFixed(2)}` : "needs ≥10"}</div>
               </div>))}
           </div>
           {Object.keys(m.by_type).length > 0 && (
             <div><h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-dim">By question type</h3>
-              <table className="text-sm"><thead className="text-xs text-dim"><tr><th className="pr-4 text-left">Type</th><th className="pr-4">n</th><th className="pr-4">hit</th><th className="pr-4">MRR</th><th className="pr-4">nDCG</th></tr></thead>
-                <tbody className="font-mono">{Object.entries(m.by_type).map(([t, v]) => <tr key={t}><td className="pr-4 font-sans">{t}</td><td className="pr-4">{v.n}</td><td className="pr-4">{pct(v.hit)}</td><td className="pr-4">{pct(v.mrr)}</td><td className="pr-4">{pct(v.ndcg)}</td></tr>)}</tbody></table></div>)}
+              <table className="w-full max-w-xl text-sm"><thead className="border-b border-border text-xs text-dim"><tr><th className="py-1 text-left font-medium">Type</th><th className="text-right font-medium">n</th><th className="text-right font-medium">hit</th><th className="text-right font-medium">MRR</th><th className="text-right font-medium">nDCG</th></tr></thead>
+                <tbody className="divide-y divide-border font-mono">{Object.entries(m.by_type).map(([t, v]) => <tr key={t}><td className="py-1 font-sans">{t}</td><td className="text-right">{v.n}</td><td className="text-right">{pct(v.hit)}</td><td className="text-right">{pct(v.mrr)}</td><td className="text-right">{pct(v.ndcg)}</td></tr>)}</tbody></table></div>)}
           {m.unanswerable_gate.sweep && (
             <div><h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-dim">Refusing off-topic questions with a score gate</h3>
               <p className="mb-1 text-xs text-dim">Best dense score: unanswerable {m.unanswerable_gate.top1_dense_unanswerable?.min.toFixed(2)}–{m.unanswerable_gate.top1_dense_unanswerable?.max.toFixed(2)}; answerable min {m.unanswerable_gate.top1_dense_answerable?.min.toFixed(2)}, median {m.unanswerable_gate.top1_dense_answerable?.median.toFixed(2)}. A threshold trades answerable questions kept against unanswerable ones refused:</p>
-              <table className="text-xs"><thead className="text-dim"><tr><th className="pr-4 text-left">min score</th><th className="pr-4">answerable kept</th><th>unanswerable refused</th></tr></thead>
-                <tbody className="font-mono">{m.unanswerable_gate.sweep.map((s) => <tr key={s.threshold}><td className="pr-4">{s.threshold}</td><td className="pr-4">{(s.answerable_kept * 100).toFixed(0)}%</td><td>{(s.unanswerable_refused * 100).toFixed(0)}%</td></tr>)}</tbody></table></div>)}
+              <table className="w-full max-w-xl text-xs"><thead className="border-b border-border text-dim"><tr><th className="py-1 text-left font-medium">min score</th><th className="text-right font-medium">answerable kept</th><th className="text-right font-medium">unanswerable refused</th></tr></thead>
+                <tbody className="divide-y divide-border font-mono">{m.unanswerable_gate.sweep.map((s) => <tr key={s.threshold}><td className="py-1">{s.threshold}</td><td className="text-right">{(s.answerable_kept * 100).toFixed(0)}%</td><td className="text-right">{(s.unanswerable_refused * 100).toFixed(0)}%</td></tr>)}</tbody></table></div>)}
           {m.answers && (
             <div><h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-dim">Generated answers ({m.answers.n})</h3>
               <ul className="text-sm"><li>Correct answer-or-refuse decisions: {pct(m.answers.abstention_correct.rate)} (n={m.answers.abstention_correct.n})</li>
@@ -279,44 +298,71 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   <td className={clsx("font-mono", p.answerable && !p.metrics.first_rank && "text-bad")}>{p.answerable ? (p.metrics.first_rank ?? "miss") : "n/a"}</td>
                   <td className="font-mono text-dim">{p.top[0] ? `${p.top[0].filename} p${p.top[0].pages.join(",")}` : "-"}</td></tr>))}</tbody></table></div>
           </div>
-          <ul className="list-disc space-y-0.5 pl-5 text-[11px] text-dim">{m.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+          <ul className="list-disc space-y-0.5 pl-5 text-xs text-dim">{m.notes.map((n) => <li key={n}>{n}</li>)}</ul>
         </div>)}
     </Card>
+    </div>
   );
 }
 
 function Compare({ dsId, picked, runs, onPick }: { dsId: string; picked: string[]; runs: EvalRunInfo[]; onPick: (id: string) => void }) {
-  const cmp = useQuery({ queryKey: ["eval-compare", dsId, picked.join(",")], enabled: picked.length >= 2, queryFn: () => api<EvalCompare>(`/eval-datasets/${dsId}/compare?runs=${picked.join(",")}`) });
+  const cmp = useQuery({
+    queryKey: ["eval-compare", dsId, picked.join(",")], enabled: picked.length >= 2, placeholderData: keepPreviousData,
+    queryFn: () => api<EvalCompare>(`/eval-datasets/${dsId}/compare?runs=${picked.join(",")}`),
+  });
   const done = runs.filter((r) => r.status === "done");
+  const byId = Object.fromEntries(runs.map((r) => [r.id, r]));
+  const addable = done.filter((r) => !picked.includes(r.id));
   const c = cmp.data;
   const chart = c ? ["hit", "mrr", "ndcg", "recall", "precision"].map((m) => ({ metric: METRIC_LABELS[m], ...Object.fromEntries(c.runs.map((r, i) => [r.label, c.metrics.find((x) => x.metric === m)?.values[i]?.mean ?? 0])) })) : [];
-  const colors = ["#0f766e", "#b45309", "#4f46e5", "#be185d", "#2563eb"];
   return (
     <div className="space-y-4">
-      <Card title="Choose runs (the first selected is the baseline)">
-        {done.length < 2 ? <p className="text-sm text-dim">Finish at least two runs on this dataset.</p> : (
-          <ul className="grid gap-1 md:grid-cols-2">{done.map((r) => <li key={r.id}><label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={picked.includes(r.id)} onChange={() => onPick(r.id)} />
-            <span>{r.label}<span className="block text-xs text-dim">{configLabel(r)}</span></span></label></li>)}</ul>)}
+      <Card title="Runs being compared"
+        actions={addable.length > 0 ? (
+          <Select aria-label="Add a run to the comparison" className="h-8 w-56" value="" onChange={(e) => e.target.value && onPick(e.target.value)}>
+            <option value="">Add a run…</option>{addable.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </Select>) : undefined}>
+        {picked.length < 2 && <p className="mb-2 text-sm text-dim">Pick at least two finished runs: tick them in the Runs tab, or add them here. The first one is the baseline.</p>}
+        <ul className="flex flex-wrap gap-2">
+          {picked.map((id, i) => (
+            <li key={id} className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 py-1 pl-2.5 pr-1 text-sm">
+              <span className="size-2.5 rounded-sm" style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} aria-hidden />
+              {byId[id]?.label ?? id}{i === 0 && <Badge tone="accent">baseline</Badge>}
+              <button onClick={() => onPick(id)} aria-label={`Remove ${byId[id]?.label ?? "run"} from the comparison`} className="grid size-6 place-items-center rounded hover:bg-border"><X className="size-3.5" /></button>
+            </li>))}
+        </ul>
       </Card>
       <ErrorBox error={cmp.error} />
       {c && (<>
+        <Card title="Chart"><div className="h-64" aria-label="Metrics for each run"><RunsBarChart data={chart} series={c.runs.map((r) => r.label)} /></div></Card>
         <Card title="Metrics side by side" pad={false}>
-          <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-border text-xs text-dim"><tr><th className="px-3 py-2">Metric</th>{c.runs.map((r) => <th key={r.id} className="px-2">{r.label}</th>)}</tr></thead>
-            <tbody className="divide-y divide-border">{c.metrics.map((row) => (
-              <tr key={row.metric}><td className="px-3 py-1.5" title={HELP[row.metric]}>{METRIC_LABELS[row.metric] ?? row.metric}</td>
-                {row.values.map((v, i) => <td key={i} className="px-2 font-mono">{pct(v.mean)} <span className="text-[11px] text-dim">[{ci(v)}]</span></td>)}</tr>))}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+            <thead className="border-b border-border text-xs text-dim"><tr><th className="px-3 py-2 font-medium">Metric</th>{c.runs.map((r) => <th key={r.id} className="px-2 text-right font-medium">{r.label}</th>)}</tr></thead>
+            <tbody className="divide-y divide-border">{c.metrics.map((row) => {
+              const means = row.values.map((v) => v.mean ?? null);
+              const best = Math.max(...means.filter((x): x is number => x != null));
+              const base = means[0];
+              return (
+                <tr key={row.metric}><td className="px-3 py-1.5" title={HELP[row.metric]}>{METRIC_LABELS[row.metric] ?? row.metric}</td>
+                  {row.values.map((v, i) => {
+                    const d = i > 0 && v.mean != null && base != null ? v.mean - base : null;
+                    return (
+                      <td key={i} className="px-2 py-1.5 text-right font-mono">
+                        <span className={clsx(v.mean != null && v.mean === best && "font-bold")} title={v.mean === best ? "Best in this row" : undefined}>{pct(v.mean)}</span>
+                        {d != null && Math.abs(d) >= 0.0005 && <span className={clsx("ml-1.5 text-xs", d > 0 ? "text-good" : "text-bad")}><span className="sr-only">{d > 0 ? "higher by" : "lower by"} </span>{d > 0 ? "+" : "−"}{Math.abs(d).toFixed(3)}</span>}
+                        <span className="block text-xs text-dim">{ci(v)}</span>
+                      </td>);
+                  })}</tr>);
+            })}</tbody></table></div>
+          <p className="px-3 py-2 text-xs text-dim">Bold = best in the row. Green or red = difference from the baseline (the first run). Differences inside the confidence interval may be noise; see the paired tests below.</p>
         </Card>
-        <Card title="Chart"><div className="h-64" aria-label="Metrics for each run"><ResponsiveContainer width="100%" height="100%"><BarChart data={chart}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="metric" tick={{ fontSize: 11, fill: "var(--text-dim)" }} /><YAxis domain={[0, 1]} tick={{ fontSize: 11, fill: "var(--text-dim)" }} />
-          <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12 }} /><Legend wrapperStyle={{ fontSize: 12 }} />
-          {c.runs.map((r, i) => <Bar key={r.id} dataKey={r.label} fill={colors[i % colors.length]} />)}</BarChart></ResponsiveContainer></div></Card>
         {c.paired_vs_first.map((p) => {
           const other = c.runs.find((r) => r.id === p.other);
           return (
             <Card key={p.other} title={`${other?.label} vs ${c.runs[0].label} (paired on ${p.shared_questions} questions)`}>
               <ul className="mb-3 grid gap-1 text-sm md:grid-cols-2">{(["hit", "mrr", "ndcg", "recall"] as const).map((m) => {
                 const d = p[m] as { mean_diff: number; ci95: [number, number] | null; significant: boolean | null } | null;
-                return <li key={m}><b>{METRIC_LABELS[m]}</b>: {d ? <span className="font-mono">{d.mean_diff >= 0 ? "+" : ""}{d.mean_diff.toFixed(3)}</span> : "n/a"}{" "}
+                return <li key={m}><b>{METRIC_LABELS[m]}</b>: {d ? <span className="font-mono">{d.mean_diff >= 0 ? "+" : "−"}{Math.abs(d.mean_diff).toFixed(3)}</span> : "n/a"}{" "}
                   {d && (d.significant === null ? <span className="text-xs text-dim">(too few questions for an interval)</span> : d.significant ? <Badge tone="good">interval excludes 0</Badge> : <Badge>not distinguishable from noise</Badge>)}</li>;
               })}</ul>
               <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-dim">Questions whose first relevant rank changed ({p.changed_questions.length})</h4>

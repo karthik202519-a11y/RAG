@@ -204,6 +204,8 @@ class SearchIn(BaseModel):
     document_ids: list[str] | None = None
     types: list[Literal["text", "table"]] | None = None
     rrf_k: int = Field(60, ge=1, le=1000)
+    expand: Literal["none", "parent", "neighbors"] = "none"
+    neighbors: int = Field(1, ge=1, le=3)
 
 
 @router.post("/indexes/{index_id}/search")
@@ -211,7 +213,7 @@ def search_index(index_id: str, body: SearchIn, user: User = Depends(current_use
     i = load_index(db, user, index_id)
     try:
         out = retrieval.search(db, i, body.query, body.mode, body.top_k, body.candidates, body.score_threshold,
-                               body.document_ids, body.types, body.rrf_k)
+                               body.document_ids, body.types, body.rrf_k, body.expand, body.neighbors)
     except DimensionMismatch as e:
         raise HTTPException(409, str(e)) from None
     except ProviderError as e:
@@ -242,6 +244,8 @@ class RetrieveIn(BaseModel):
     types: list[Literal["text", "table"]] | None = None
     score_threshold: float | None = None
     rrf_k: int = Field(60, ge=1, le=1000)
+    expand: Literal["none", "parent", "neighbors"] = "none"
+    neighbors: int = Field(1, ge=1, le=3)
 
 
 @router.post("/indexes/{index_id}/retrieve")
@@ -254,7 +258,7 @@ def retrieve_pipeline(index_id: str, body: RetrieveIn, user: User = Depends(curr
         out = pipeline.run(db, i, body.query, mode=body.mode, top_k=body.top_k, transform=body.transform, n_queries=body.n_queries,
                            mmr_on=body.mmr, mmr_lambda=body.mmr_lambda, rerank=body.rerank, rerank_candidates=body.rerank_candidates,
                            llm_model=body.llm_model, document_ids=body.document_ids, types=body.types,
-                           score_threshold=body.score_threshold, rrf_k=body.rrf_k)
+                           score_threshold=body.score_threshold, rrf_k=body.rrf_k, expand=body.expand, neighbors=body.neighbors)
     except generation.GenerationNotConfigured as e:
         raise HTTPException(409, f"This option needs the chat model, which is not configured. {e}") from None
     except DimensionMismatch as e:
@@ -286,6 +290,8 @@ class AnswerIn(BaseModel):
     system_prompt: str | None = Field(None, max_length=4000)
     price_in_per_million: float | None = Field(None, ge=0)
     price_out_per_million: float | None = Field(None, ge=0)
+    expand: Literal["none", "parent", "neighbors"] = "none"
+    neighbors: int = Field(1, ge=1, le=3)
 
 
 @router.post("/indexes/{index_id}/answer")
@@ -297,7 +303,8 @@ def answer_question(index_id: str, body: AnswerIn, user: User = Depends(current_
                                  temperature=body.temperature, max_output_tokens=body.max_output_tokens,
                                  context_budget=body.context_budget, min_score=body.min_score,
                                  price_in_per_million=body.price_in_per_million, price_out_per_million=body.price_out_per_million,
-                                 system_prompt=body.system_prompt, document_ids=body.document_ids)
+                                 system_prompt=body.system_prompt, document_ids=body.document_ids,
+                                 expand=body.expand, neighbors=body.neighbors)
     except generation.GenerationNotConfigured as e:
         raise HTTPException(409, f"Answer generation is not configured. {e}") from None
     except DimensionMismatch as e:

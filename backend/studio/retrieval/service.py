@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from ..embeddings import embed_texts
 from ..embeddings.providers import ProviderError
 from ..models import Index, IndexChunk
+from .expand import expand_results
 from ..vectorstores import qdrant_store
 
 TOKEN_RE = re.compile(r"[a-z0-9]+(?:[.\-][a-z0-9]+)*")
@@ -86,7 +87,7 @@ def _bm25_search(db: Session, index_id: str, query: str, limit: int, document_id
 
 def search(db: Session, index: Index, query: str, mode: str = "dense", top_k: int = 5, candidates: int | None = None,
            score_threshold: float | None = None, document_ids: list[str] | None = None,
-           types: list[str] | None = None, rrf_k: int = 60) -> dict:
+           types: list[str] | None = None, rrf_k: int = 60, expand: str = "none", neighbors: int = 1) -> dict:
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     if index.status != "ready":
@@ -135,7 +136,7 @@ def search(db: Session, index: Index, query: str, mode: str = "dense", top_k: in
     if score_threshold is not None:
         gate = "dense" if mode in ("dense", "hybrid") else "bm25"
         ordered = [c for c in ordered if gate in parts[c] and parts[c][gate]["score"] >= score_threshold]
-    ordered = ordered[:top_k]
+    ordered = ordered[:top_k * 3 if expand == "parent" else top_k]  # parents collapse several children, so look further
 
     rows = {r.id: r for r in db.scalars(select(IndexChunk).where(IndexChunk.id.in_(ordered or [""])))}
     results = []
@@ -144,11 +145,14 @@ def search(db: Session, index: Index, query: str, mode: str = "dense", top_k: in
         score = p["rrf"] if mode == "hybrid" else (p["dense"]["score"] if mode == "dense" else p["bm25"]["score"])
         results.append({
             "rank": rank, "chunk_id": r.id, "score": score, "contributions": p,
+            "index_id": r.index_id, "parent_id": r.parent_id,
             "document_id": r.document_id, "version_id": r.version_id, "filename": r.filename,
             "chunk_index": r.chunk_index, "type": r.ctype, "section": r.section, "pages": r.pages,
             "printed_pages": r.printed_pages, "start": r.start, "end": r.end, "tokens": r.tokens,
             "citation": citation(r), "text": r.text,
         })
+    results = expand_results(db, results, expand, neighbors, limit=top_k)
+    info["expand"] = expand
     return {"query": query, "mode": mode, "top_k": top_k, "candidates": cand, "results": results,
             "timings_ms": timings, "info": info}
 

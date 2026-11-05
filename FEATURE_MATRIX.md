@@ -52,14 +52,16 @@ Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 
 | pdfplumber, Docling, Unstructured, Tika, Tesseract, PaddleOCR, Azure Document Intelligence, AWS Textract, Google Document AI, LlamaParse | Not built |
 | Side-by-side parser comparison UI | Not built |
 
-## Chunking (registry category `chunking`): 10 run, 14 do not
+## Chunking (registry category `chunking`): 12 run, 12 do not
 
 | Method | Status |
 |---|---|
 | Fixed characters, fixed tokens, sliding window, recursive, sentence, paragraph, Markdown header, page-aware, structure-aware | Implemented + tested; all run on the 297-page NASA handbook |
 | **Table-aware (row-level)**: one chunk per row (or group of rows) with caption and headers repeated; Markdown or key-value format | Implemented + tested; 492 row chunks on the handbook, none unlocated |
 | Overlapping / non-overlapping | Not separate methods: the `overlap` parameter |
-| HTML structure, document section, semantic, topic, parent-child, small-to-big, layout-aware, code-aware, JSON/XML structure, contextual enrichment, LLM proposition, adaptive | Not built |
+| **Semantic chunking**: split where embedding similarity between neighbouring sentences drops | Implemented + tested; uses the project embedder (cached, parallel batches) |
+| **Parent-child (small-to-big)**: embed small children, return the larger parent; neighbour expansion at query time | Implemented + tested; backend and API only, no UI control for expansion yet |
+| HTML structure, document section, topic, layout-aware, code-aware, JSON/XML structure, contextual enrichment, LLM proposition, adaptive | Not built |
 
 Every chunk has exact character offsets, pages, printed pages and section. Measured per run: chunk count, token
 distribution, duplication, coverage, mid-sentence endings, embedding tokens, optional cost, timing.
@@ -83,7 +85,7 @@ distribution, duplication, coverage, mid-sentence endings, embedding tokens, opt
 | Grounded answers: numbered passages in a token budget, exact-prompt inspector, citation check, refusal, score gate | Implemented + tested with a fake model; verified live with `gpt-4o-mini` |
 | Citation check proves the `[n]` exists, **not** that the passage supports the claim | Stated in the UI |
 | **Vision descriptions of diagram pages** (`gpt-4o`), checkpointed per page, idempotent, searchable | Implemented + tested with a fake model; verified live on 4 real pages; turned a refused diagram question into a correct answer |
-| Other vector stores, embedding providers, LLM providers; parent-document and small-to-big retrieval; graph retrieval | Not built |
+| Other vector stores, embedding providers, LLM providers; graph retrieval | Not built |
 | Streaming answers, persisted answers | Not built |
 
 ## Evaluation Center
@@ -103,8 +105,16 @@ distribution, duplication, coverage, mid-sentence endings, embedding tokens, opt
 | LLM-generated candidate questions with human approval; human annotation UI | Not built (the `approved` flag exists) |
 | Ragas / DeepEval integration | Not built |
 
+## Performance (measured on the dev machine, Azure `text-embedding-3-small`)
+
+| Item | Status |
+|---|---|
+| Embedding batches run in parallel with a content-hash cache | Implemented + tested; about 17 to 46 texts/s on the same corpus |
+| Evaluation and vision-description jobs run questions/pages with a worker pool | Implemented + tested |
+| GZip responses, cached method catalog, route prefetch on link hover, lazy-loaded charts | Implemented; first-load JS about 200 KB gzip; pages show their heading in 170 to 350 ms locally |
+
 ## Not started
 
 Parser comparison lab, GraphRAG, pipeline builder, experiment studio (beyond run comparison), traces and monitoring,
 provider and connector settings UI, recommendation engine, context compression, multimodal retrieval beyond
-vision descriptions, semantic / parent-child / contextual chunking, other vector databases, the 10,000-document load test.
+vision descriptions, contextual chunking, other vector databases, the 10,000-document load test.

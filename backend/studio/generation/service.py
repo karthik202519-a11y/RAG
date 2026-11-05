@@ -147,14 +147,14 @@ def answer(db: Session, index: Index, question: str, *, model: str | None = None
            strict: bool = True, temperature: float = 0.0, max_output_tokens: int = 600, context_budget: int = 3000,
            min_score: float | None = None, price_in_per_million: float | None = None,
            price_out_per_million: float | None = None, system_prompt: str | None = None,
-           document_ids: list[str] | None = None) -> dict:
+           document_ids: list[str] | None = None, expand: str = "none", neighbors: int = 1) -> dict:
     model = model or settings.azure_chat_deployment
     ok, why = generation_status()
     if not ok:
         raise GenerationNotConfigured(why)
 
     t0 = time.perf_counter()
-    ret = retrieval.search(db, index, question, mode, top_k, None, None, document_ids, None)
+    ret = retrieval.search(db, index, question, mode, top_k, None, None, document_ids, None, 60, expand, neighbors)
     retrieval_ms = round((time.perf_counter() - t0) * 1000, 1)
     hits = ret["results"]
     out: dict = {"question": question, "model": model, "mode": mode, "strict": strict, "retrieval": ret}

@@ -1,8 +1,11 @@
 """Job handler: run an evaluation dataset against an index."""
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from sqlalchemy import select
 
+from .. import db as dbmod
+from ..config import settings
 from ..evaluation import service as ev
 from ..models import EvalQuestion, EvalRun, Index
 from .runner import CANCEL_HOOKS, DEAD_HOOKS, JobContext, PermanentJobError, handler
@@ -29,19 +32,39 @@ def run_eval(ctx: JobContext) -> None:
     run.status, run.error = "running", None
     db.commit()
     t0, per_q = time.perf_counter(), []
-    for n, q in enumerate(qs):
-        if ctx.cancelled():
-            raise InterruptedError("cancelled")
-        try:
-            per_q.append(ev.run_one(db, index, q, cfg))
-        except Exception as e:  # one failing question must not sink the run; it is recorded
-            if isinstance(e, (MemoryError, KeyboardInterrupt)):
-                raise
-            per_q.append({"question_id": q.id, "question": q.question, "qtype": q.qtype, "answerable": q.answerable, "split": q.split,
-                          "metrics": ev.M.evaluate_question([], [], [], cfg["k"]) | {"hit": None, "first_rank": None},
-                          "latency_ms": 0.0, "top1_dense_score": None, "llm_tokens": 0, "top": [],
-                          "error": f"{type(e).__name__}: {str(e)[:200]}"})
-        ctx.progress((n + 1) / len(qs), f"question {n + 1}/{len(qs)}")
+    index_id = index.id
+    snapshot = [(q.id, q.question, q.qtype, q.answerable, q.split) for q in qs]
+
+    def one(qid: str):
+        """Each question runs on its own database session (sessions are not shared between threads)."""
+        with dbmod.SessionLocal() as sess:
+            idx, q = sess.get(Index, index_id), sess.get(EvalQuestion, qid)
+            try:
+                return ev.run_one(sess, idx, q, cfg)
+            except Exception as e:  # one failing question must not sink the run; it is recorded
+                if isinstance(e, (MemoryError, KeyboardInterrupt)):
+                    raise
+                return {"question_id": q.id, "question": q.question, "qtype": q.qtype, "answerable": q.answerable, "split": q.split,
+                        "metrics": ev.M.evaluate_question([], [], [], cfg["k"]) | {"hit": None, "first_rank": None},
+                        "latency_ms": 0.0, "top1_dense_score": None, "llm_tokens": 0, "top": [],
+                        "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+    # Questions are independent, so several run at once; results keep the dataset's order.
+    pool = ThreadPoolExecutor(max_workers=max(1, min(settings.eval_workers, len(snapshot))), thread_name_prefix="eval")
+    try:
+        futures = [pool.submit(one, s[0]) for s in snapshot]
+        for n, f in enumerate(futures):
+            while True:
+                if ctx.cancelled():
+                    raise InterruptedError("cancelled")
+                try:
+                    per_q.append(f.result(timeout=1.0))
+                    break
+                except TimeoutError:
+                    continue
+            ctx.progress((n + 1) / len(snapshot), f"question {n + 1}/{len(snapshot)}")
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     errors = [p for p in per_q if p.get("error")]
     if errors and len(errors) == len(per_q):
         raise PermanentJobError(f"Every question failed. First error: {errors[0]['error']}")

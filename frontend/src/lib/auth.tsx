@@ -45,6 +45,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const logout = useCallback(() => {
     setToken(null);
+    try {
+      window.localStorage.removeItem("studio.projectobj");
+      window.localStorage.removeItem("studio.project");
+    } catch {
+      /* ignore */
+    }
     setUser(null);
   }, []);
 

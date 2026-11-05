@@ -11,8 +11,9 @@ def test_catalog_lists_methods_with_honest_status(client):
     cat = client.get("/method-catalog", params={"category": "chunking"}).json()
     ids = {m["id"]: m for m in cat["items"]}
     assert ids["fixed_token"]["status"] == "implemented" and ids["fixed_token"]["params"]
-    assert ids["semantic"]["status"] == "unavailable" and ids["semantic"]["unavailable_reason"]
-    assert cat["counts"]["implemented"] == 10 and cat["counts"]["unavailable"] >= 10
+    assert ids["topic_based"]["status"] == "unavailable" and ids["topic_based"]["unavailable_reason"]
+    assert ids["semantic"]["status"] == "implemented" and ids["semantic"]["params"]
+    assert cat["counts"]["implemented"] == 12 and cat["counts"]["unavailable"] >= 10
     assert client.get("/method-catalog/recursive").json()["advantages"]
     assert client.get("/method-catalog/nope").status_code == 404
     only = client.get("/method-catalog", params={"category": "parser", "status": "implemented"}).json()["items"]
@@ -59,7 +60,7 @@ def test_preview_validation_errors_are_422_with_a_reason(client, auth, project, 
 
     r = go({"method": "fixed_token", "params": {"size": 50, "overlap": 50}})
     assert r.status_code == 422 and "Overlap" in r.json()["detail"]
-    r = go({"method": "semantic"})
+    r = go({"method": "topic_based"})
     assert r.status_code == 422 and "not available" in r.json()["detail"]
     assert go({"method": "nonsense"}).status_code == 422
     assert go({"method": "fixed_token", "params": {"size": "huge"}}).status_code == 422

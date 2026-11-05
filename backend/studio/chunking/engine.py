@@ -62,6 +62,12 @@ def validate_params(method_id: str, raw: dict | None) -> dict:
         raise ChunkingError("; ".join(errors))
     if "overlap" in out and "size" in out and out["overlap"] >= out["size"]:
         raise ChunkingError(f"Overlap ({out['overlap']}) must be smaller than chunk size ({out['size']}).")
+    if "child_overlap" in out and "child_size" in out and out["child_overlap"] >= out["child_size"]:
+        raise ChunkingError(f"Child overlap ({out['child_overlap']}) must be smaller than child size ({out['child_size']}).")
+    if "parent_size" in out and "child_size" in out and out["child_size"] >= out["parent_size"]:
+        raise ChunkingError(f"Child size ({out['child_size']}) must be smaller than parent size ({out['parent_size']}).")
+    if "min_tokens" in out and "max_tokens" in out and out["min_tokens"] > out["max_tokens"]:
+        raise ChunkingError(f"Minimum chunk size ({out['min_tokens']}) must not exceed the maximum ({out['max_tokens']}).")
     if "stride" in out and "size" in out and out["stride"] > out["size"]:
         raise ChunkingError(f"Stride ({out['stride']}) larger than window size ({out['size']}) would skip text.")
     return out
@@ -80,7 +86,10 @@ def run_chunking(pages: list[dict], method_id: str, raw_params: dict | None,
     tokenizer = params.get("tokenizer", "cl100k_base")
     canon = build_canon(pages)
     t0 = time.perf_counter()
-    cuts, warnings = METHODS[method_id](canon, params)
+    try:
+        cuts, warnings = METHODS[method_id](canon, params)
+    except ValueError as e:
+        raise ChunkingError(str(e)) from e
     elapsed = time.perf_counter() - t0
     if not canon.text.strip():
         raise ChunkingError("This document has no extractable text.")
@@ -114,6 +123,8 @@ def run_chunking(pages: list[dict], method_id: str, raw_params: dict | None,
             "pages": pages_,
             "printed_pages": [canon.printed.get(p) for p in pages_],
             "section": canon.section_at(s, e) if located else cut.get("section"),
+            "parent_start": cut.get("parent", {}).get("start"),
+            "parent_end": cut.get("parent", {}).get("end"),
             "overlap_prev_chars": overlap,
             "ends_mid_sentence": ctype == "text" and not text.rstrip().endswith(TERMINAL),
         })
@@ -139,6 +150,7 @@ def run_chunking(pages: list[dict], method_id: str, raw_params: dict | None,
         "estimated_embedding_cost_usd": (round(sum(tokens) / 1e6 * price_per_million_tokens, 6)
                                          if price_per_million_tokens is not None else None),
         "vectors_to_store": len(chunks),
+        "parents": len({(c["parent_start"], c["parent_end"]) for c in chunks if c["parent_start"] is not None}),
         "processing_seconds": round(elapsed, 4),
     }
     return {"method": method_id, "params": params, "chunks": chunks, "stats": stats, "warnings": warnings,

@@ -4,6 +4,7 @@ import type { NextConfig } from "next";
 // cacheComponents / partialPrefetching defaults from the scaffold are switched off:
 // they add Suspense requirements and state-preservation behaviour this app does not want.
 const nextConfig: NextConfig = {
+  experimental: { optimizePackageImports: ["lucide-react", "recharts", "@tanstack/react-query"] },
   turbopack: {
     rules: {
       "*.css": {

@@ -4,8 +4,10 @@ import time
 
 from ..artifacts import get_store
 from ..chunking import ChunkingError, run_chunking
+from ..chunking.context import use_embedder
 from ..embeddings import NotConfigured, embed_texts, get_provider
-from ..models import Document, DocumentVersion, Index, IndexChunk
+from ..chunking.tokens import count as count_tokens
+from ..models import Document, DocumentVersion, Index, IndexChunk, IndexParent, uid
 from ..vectorstores import qdrant_store
 from .runner import CANCEL_HOOKS, DEAD_HOOKS, JobContext, PermanentJobError, handler
 
@@ -39,7 +41,7 @@ def build_index(ctx: JobContext) -> None:
 
     t0 = time.perf_counter()
     ctx.progress(0.02, "chunking")
-    store, rows = get_store(), []
+    store, rows, all_parents = get_store(), [], []
     versions = cfg["version_ids"]
     for n, vid in enumerate(versions):
         ver = db.get(DocumentVersion, vid)
@@ -48,18 +50,32 @@ def build_index(ctx: JobContext) -> None:
         doc = db.get(Document, ver.document_id)
         pages = json.loads(store.get(ver.extraction_key))
         try:
-            res = run_chunking(pages, cfg["chunking"]["method"], cfg["chunking"]["params"])
+            with use_embedder(lambda prov, texts: embed_texts(db, prov, texts).vectors):
+                res = run_chunking(pages, cfg["chunking"]["method"], cfg["chunking"]["params"])
         except ChunkingError as e:
             raise PermanentJobError(f"Chunking failed for {doc.filename}: {e}") from e
+        except NotConfigured as e:
+            raise PermanentJobError(str(e)) from e
+        parents: dict[tuple, IndexParent] = {}
         for c in res["chunks"]:
+            pid = None
+            if c.get("parent_start") is not None:  # parent-child chunking: remember the larger passage
+                key = (c["parent_start"], c["parent_end"])
+                if key not in parents:
+                    ptxt = res["doc_text"][c["parent_start"]:c["parent_end"]]
+                    parents[key] = IndexParent(id=uid(), index_id=idx.id, document_id=doc.id, version_id=ver.id, filename=doc.filename,
+                                               text=ptxt, tokens=count_tokens(ptxt), pages=[], section=c["section"])
+                parents[key].pages = sorted(set(parents[key].pages) | set(c["pages"]))
+                pid = parents[key].id
             rows.append(IndexChunk(index_id=idx.id, document_id=doc.id, version_id=ver.id, filename=doc.filename,
                                    chunk_index=c["index"], start=c["start"], end=c["end"], text=c["text"],
                                    ctype=c["type"], tokens=c["tokens"], pages=c["pages"],
-                                   printed_pages=c["printed_pages"], section=c["section"]))
+                                   printed_pages=c["printed_pages"], section=c["section"], parent_id=pid))
+        all_parents.extend(parents.values())
         ctx.progress(0.02 + 0.2 * (n + 1) / len(versions), f"chunking {n + 1}/{len(versions)} documents")
     if not rows:
         raise PermanentJobError("The chosen documents produced no chunks")
-    db.add_all(rows)
+    db.add_all(all_parents + rows)
     db.commit()
 
     billed = hits = embedded_tokens = 0

@@ -19,7 +19,7 @@ PAGES = [page(1, PARAS[:4], section="1.0 Intro"), page(2, PARAS[4:8], section="2
          page(3, PARAS[8:], tables=["| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |"], section="3.0 End")]
 
 
-@pytest.mark.parametrize("method", [m for m in METHODS if m != "markdown_header"])
+@pytest.mark.parametrize("method", [m for m in METHODS if m not in ("markdown_header", "semantic")])  # semantic: see its own tests
 def test_every_method_produces_consistent_chunks(method):
     r = run_chunking(PAGES, method, {"size": 60, "overlap": 8} if method in ("fixed_token", "recursive") else None)
     canon = build_canon(PAGES)
@@ -203,3 +203,62 @@ def test_unicode_and_emoji_do_not_break_offsets():
     canon = build_canon(pages)
     for c in r["chunks"]:
         assert c["text"] == canon.text[c["start"]:c["end"]]
+
+
+# ------------------------------------------------------------------ semantic chunking
+VOLCANO = ["Volcanic magma rises through cracks in the crust.", "Volcanic magma erupts as lava and ash.",
+           "Volcanic lava cools into dark basalt rock.", "Volcanic magma chambers fill slowly."]
+GLACIER = ["Glacier ice flows down mountain valleys.", "Glacier ice carves deep valleys over centuries.",
+           "Glacier ice pushes rock toward the sea.", "Glacier ice melts into cold rivers."]
+
+
+def hash_embedder():
+    from studio.embeddings.providers import HashEmbedder
+    return lambda provider, texts: HashEmbedder().embed(texts).vectors
+
+
+def test_semantic_needs_an_embedder():
+    with pytest.raises(ChunkingError, match="embedding provider"):
+        run_chunking([page(1, [" ".join(VOLCANO)])], "semantic", {"provider": "local_hash"})
+
+
+def test_semantic_cuts_where_the_topic_changes_and_never_inside_a_sentence():
+    from studio.chunking.context import use_embedder
+    pages = [page(1, [" ".join(VOLCANO + GLACIER)])]
+    with use_embedder(hash_embedder()):
+        r = run_chunking(pages, "semantic", {"provider": "local_hash", "breakpoint_percentile": 85, "min_tokens": 1, "max_tokens": 500})
+    texts = [c["text"] for c in r["chunks"]]
+    assert len(texts) == 2
+    assert "volcanic" in texts[0].lower() and "glacier" not in texts[0].lower()
+    assert "glacier" in texts[1].lower() and "volcanic" not in texts[1].lower()
+    assert all(t.rstrip().endswith(".") for t in texts) and any("percentile" in w for w in r["warnings"])
+
+
+def test_semantic_respects_max_tokens_min_tokens_and_keeps_tables_whole():
+    from studio.chunking.context import use_embedder
+    table = "| a | b |\n|---|---|\n| volcanic | magma |\n| glacier | ice |"
+    pages = [page(1, VOLCANO + GLACIER, tables=[table])]
+    with use_embedder(hash_embedder()):
+        small = run_chunking(pages, "semantic", {"provider": "local_hash", "breakpoint_percentile": 99, "min_tokens": 1, "max_tokens": 30})
+        big = run_chunking(pages, "semantic", {"provider": "local_hash", "breakpoint_percentile": 99, "min_tokens": 1, "max_tokens": 5000})
+    assert max(c["tokens"] for c in small["chunks"] if c["type"] == "text") <= 40
+    assert len(small["chunks"]) > len(big["chunks"])
+    assert any("| volcanic | magma |" in c["text"] and "| glacier | ice |" in c["text"] for c in small["chunks"])  # the table is never split
+    with pytest.raises(ChunkingError, match="Minimum chunk size"):
+        run_chunking(pages, "semantic", {"provider": "local_hash", "min_tokens": 600, "max_tokens": 500})
+
+
+def test_semantic_through_the_api_and_the_index_builder(client, auth, project):
+    from conftest import upload, wait_for_job
+    from test_indexes import build
+    body = " ".join(VOLCANO) + "\n\n" + " ".join(GLACIER)
+    r = upload(client, auth, project["id"], "geo.txt", body.encode()).json()["results"][0]
+    wait_for_job(client, auth, r["job_id"])
+    prev = client.post("/chunking-preview", headers=auth, json={"document_id": r["document_id"], "configs": [
+        {"method": "semantic", "params": {"provider": "local_hash", "breakpoint_percentile": 85, "min_tokens": 1}}]})
+    assert prev.status_code == 200 and prev.json()["results"][0]["stats"]["chunk_count"] == 2
+    bad = client.post("/chunking-preview", headers=auth, json={"document_id": r["document_id"], "configs": [
+        {"method": "semantic", "params": {"provider": "azure_openai"}}]})
+    assert bad.status_code == 409 and "not configured" in bad.json()["detail"]  # no Azure in tests
+    idx = build(client, auth, project, chunking={"method": "semantic", "params": {"provider": "local_hash", "breakpoint_percentile": 85, "min_tokens": 1}})
+    assert idx["chunk_count"] == 2 and idx["status"] == "ready"

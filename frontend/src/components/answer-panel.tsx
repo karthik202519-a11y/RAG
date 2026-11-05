@@ -76,7 +76,7 @@ export function AnswerPanel({ r, onOpen }: { r: AnswerResponse; onOpen: (s: Sour
                 · {r.context_passages.length} passage{r.context_passages.length === 1 ? "" : "s"} sent{r.dropped_passages.length > 0 ? `, ${r.dropped_passages.length} dropped for budget` : ""}</p>
               {r.prompt.messages.map((m, i) => (
                 <div key={i}>
-                  <div className={clsx("mb-1 text-[11px] font-semibold uppercase tracking-wide", m.role === "system" ? "text-warn" : "text-accent")}>{m.role}</div>
+                  <div className={clsx("mb-1 text-xs font-semibold uppercase tracking-wide", m.role === "system" ? "text-warn" : "text-accent")}>{m.role}</div>
                   <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-surface-2 p-3 font-mono text-xs">{m.content}</pre>
                 </div>
               ))}

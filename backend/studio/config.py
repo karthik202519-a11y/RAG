@@ -37,6 +37,9 @@ class Settings:
     token_minutes: int = int(os.getenv("STUDIO_TOKEN_MINUTES", "720"))
     max_upload_mb: int = int(os.getenv("STUDIO_MAX_UPLOAD_MB", "200"))
     job_workers: int = int(os.getenv("STUDIO_JOB_WORKERS", "2"))
+    embed_concurrency: int = int(os.getenv("STUDIO_EMBED_CONCURRENCY", "4"))    # parallel embedding requests
+    eval_workers: int = int(os.getenv("STUDIO_EVAL_WORKERS", "4"))              # evaluation questions in parallel
+    vision_workers: int = int(os.getenv("STUDIO_VISION_WORKERS", "3"))          # vision descriptions in parallel
     job_max_attempts: int = int(os.getenv("STUDIO_JOB_MAX_ATTEMPTS", "3"))
     cors_origins: str = os.getenv("STUDIO_CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
     s3_endpoint: str = os.getenv("S3_ENDPOINT", "")

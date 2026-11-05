@@ -5,7 +5,7 @@ import clsx from "clsx";
 import { Play, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Histogram } from "@/components/lazy-charts";
 import { ChunkDetail, ChunkedText } from "@/components/chunk-view";
 import { MethodDetail } from "@/components/method-detail";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
@@ -22,8 +22,10 @@ const PRESETS: { label: string; method: string; params: Record<string, unknown> 
   { label: "400 tok · 80 overlap", method: "recursive", params: { size: 400, overlap: 80 } },
   { label: "800 tok · 80 overlap", method: "recursive", params: { size: 800, overlap: 80 } },
   { label: "800 tok · 160 overlap", method: "recursive", params: { size: 800, overlap: 160 } },
+  { label: "Semantic · 90th percentile", method: "semantic", params: { breakpoint_percentile: 90 } },
+  { label: "Parent-child 1200 / 200", method: "parent_child", params: { parent_size: 1200, child_size: 200, child_overlap: 20 } },
+  { label: "Table rows", method: "table_rows", params: { rows_per_chunk: 1 } },
 ];
-const NOT_YET = ["Semantic", "Parent-child", "Contextual"];
 
 export default function ChunkingPlayground() {
   const { project, loading } = useProject();
@@ -39,7 +41,7 @@ export default function ChunkingPlayground() {
   const [price, setPrice] = useState("");
   const [nextId, setNextId] = useState(2);
 
-  const catalog = useQuery({ queryKey: ["catalog", "chunking"], queryFn: () => api<Catalog>("/method-catalog?category=chunking") });
+  const catalog = useQuery({ queryKey: ["catalog", "chunking"], staleTime: Infinity, queryFn: () => api<Catalog>("/method-catalog?category=chunking") });
   const docs = useQuery({
     queryKey: ["docs-ready", pid], enabled: !!pid,
     queryFn: () => api<{ items: Doc[] }>(`/projects/${pid}/documents?status=ready&limit=500`),
@@ -132,22 +134,24 @@ export default function ChunkingPlayground() {
 
       <div className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_24rem]">
         {/* ---- left: method catalog ---- */}
-        <Card title="Methods" pad={false} className="h-fit">
-          <ul className="max-h-[75vh] divide-y divide-border overflow-y-auto" aria-label="Chunking methods">
-            {[...methods].sort((a, b) => Number(a.status === "unavailable") - Number(b.status === "unavailable")).map((m) => (
+        <Card title={`Methods (${methods.filter((m) => m.status !== "unavailable").length})`} pad={false} className="h-fit">
+          <ul className="divide-y divide-border" aria-label="Chunking methods">
+            {methods.filter((m) => m.status !== "unavailable").map((m) => (
               <li key={m.id}>
-                <button onClick={() => (m.status === "unavailable" ? undefined : setMethod(m.id))} disabled={m.status === "unavailable"}
-                  aria-label={`${m.name}${m.status === "unavailable" ? " (not built yet)" : ""}`}
-                  title={m.unavailable_reason ?? m.summary}
-                  className={clsx("flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm",
-                    m.status === "unavailable" ? "cursor-not-allowed text-dim opacity-60" : "hover:bg-surface-2",
-                    cur?.method === m.id && "bg-accent-soft font-medium")}>
-                  <span>{m.name}</span>
-                  {m.status === "unavailable" && <Badge tone="warn">soon</Badge>}
+                <button onClick={() => setMethod(m.id)} aria-pressed={cur?.method === m.id} title={m.summary}
+                  className={clsx("flex w-full items-center px-3 py-2 text-left text-sm hover:bg-surface-2", cur?.method === m.id && "bg-accent-soft font-medium text-accent")}>
+                  {m.name}
                 </button>
               </li>
             ))}
           </ul>
+          <details className="border-t border-border">
+            <summary className="cursor-pointer px-3 py-2 text-xs text-dim hover:bg-surface-2">{methods.filter((m) => m.status === "unavailable").length} more planned, not runnable yet</summary>
+            <ul className="px-3 pb-2 text-xs text-dim">
+              {methods.filter((m) => m.status === "unavailable").map((m) => <li key={m.id} className="py-0.5" title={m.unavailable_reason ?? undefined}>{m.name}</li>)}
+            </ul>
+            <p className="px-3 pb-2 text-xs text-dim">Hover for why. <Link href="/catalog" className="text-accent underline">Open the Method Catalog</Link></p>
+          </details>
         </Card>
 
         {/* ---- centre: visualisation ---- */}
@@ -157,7 +161,7 @@ export default function ChunkingPlayground() {
               <button key={c.id} role="tab" aria-selected={i === active} onClick={() => setActive(i)}
                 className={clsx("flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm", i === active ? "border-accent bg-accent-soft font-medium" : "border-border bg-surface hover:bg-surface-2")}>
                 <span className="font-mono text-xs">{c.label}</span> {byId[c.method]?.name}
-                <span className="font-mono text-[11px] text-dim">{String(c.params.size ?? "")}{c.params.overlap != null ? `/${c.params.overlap}` : ""}</span>
+                <span className="font-mono text-xs text-dim">{String(c.params.size ?? "")}{c.params.overlap != null ? `/${c.params.overlap}` : ""}</span>
               </button>
             ))}
             <Button size="sm" onClick={() => addConfig()} disabled={cfgs.length >= 4} aria-label="Add a configuration to compare"><Plus className="size-3.5" /> Compare</Button>
@@ -179,7 +183,7 @@ export default function ChunkingPlayground() {
           {preview && (
             <>
               <div className="flex gap-1 rounded-md bg-surface-2 p-1 text-sm" role="tablist" aria-label="View">
-                {([["text", "Document view"], ["list", "Chunk list"], ["compare", "Statistics & comparison"]] as const).map(([k, l]) => (
+                {([["text", "Document view"], ["list", "Chunk list"], ["compare", "Statistics"]] as const).map(([k, l]) => (
                   <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}
                     className={clsx("flex-1 rounded px-3 py-1", view === k ? "bg-surface font-medium shadow-sm" : "text-dim")}>{l}</button>
                 ))}
@@ -195,7 +199,7 @@ export default function ChunkingPlayground() {
                         <ChunkedText text={preview.doc_text} chunks={r.chunks} selected={selected?.cfg === ci ? selected.chunk : null}
                           onSelect={(i) => setSelected({ cfg: ci, chunk: i })} />
                       </div>
-                      <p className="mt-2 text-[11px] text-dim">Colors alternate between neighbouring chunks. Hatched text is repeated in two chunks (overlap). Struck-through text is in no chunk. Click text to inspect its chunk.</p>
+                      <p className="mt-2 text-xs text-dim">Colors alternate between neighbouring chunks. Hatched text is repeated in two chunks (overlap). Struck-through text is in no chunk. Click text to inspect its chunk.</p>
                     </Card>
                   ))}
                 </div>
@@ -240,20 +244,20 @@ export default function ChunkingPlayground() {
         <div className="space-y-4">
           <Card title={`Configure ${cur?.label ?? ""}`}>
             <div className="mb-3">
-              <p className="mb-1 text-xs font-medium text-dim">Experiment presets</p>
-              <div className="flex flex-wrap gap-1.5">
-                {PRESETS.map((p) => <Button key={p.label} size="sm" onClick={() => applyPreset(p)}>{p.label}</Button>)}
-                {NOT_YET.map((n) => <Button key={n} size="sm" disabled title="Not built yet; see the Method Catalog">{n}</Button>)}
-              </div>
-              <p className="mt-1 text-[11px] text-dim">Presets are experiments to try on your data, not recommendations.</p>
+              <details>
+                <summary className="cursor-pointer text-xs font-medium text-dim hover:text-text">Experiment presets ({PRESETS.length})</summary>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {PRESETS.map((p) => <Button key={p.label} size="sm" onClick={() => applyPreset(p)}>{p.label}</Button>)}
+                </div>
+                <p className="mt-1 text-xs text-dim">Presets are experiments to try on your data, not recommendations.</p>
+              </details>
             </div>
             {curMethod && (
               <div className="space-y-3">
-                <Field label="Method">
-                  <Select value={cur.method} onChange={(e) => setMethod(e.target.value)} aria-label="Method">
-                    {methods.filter((m) => m.status !== "unavailable").map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </Select>
-                </Field>
+                <div>
+                  <p className="text-sm font-medium">{curMethod.name}</p>
+                  <p className="text-xs text-dim">{curMethod.summary}</p>
+                </div>
                 {curMethod.params.map((p) => (
                   <ParamControl key={p.name} p={p} value={cur.params[p.name]} onChange={(v) => update({ params: { ...cur.params, [p.name]: v } })} />
                 ))}
@@ -261,7 +265,14 @@ export default function ChunkingPlayground() {
               </div>
             )}
           </Card>
-          <Card>{curMethod ? <MethodDetail m={curMethod} names={Object.fromEntries(methods.map((m) => [m.id, m.name]))} /> : <Spinner />}</Card>
+          <Card pad={false}>
+            {curMethod ? (
+              <details>
+                <summary className="cursor-pointer px-4 py-3 text-sm font-medium hover:bg-surface-2">How it works, advantages and parameters explained</summary>
+                <div className="border-t border-border p-4"><MethodDetail m={curMethod} names={Object.fromEntries(methods.map((m) => [m.id, m.name]))} /></div>
+              </details>
+            ) : <Spinner />}
+          </Card>
         </div>
       </div>
     </div>
@@ -306,18 +317,9 @@ function Compare({ results }: { results: ChunkPreview["results"] }) {
         {results.map((r, i) => (
           <Card key={i} title={`Chunk size distribution · ${r.label}`}>
             <div className="h-48" aria-label={`Histogram of chunk token counts for ${r.label}`}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={r.stats.histogram.map((h) => ({ range: `${h.from}–${h.to}`, count: h.count }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="range" tick={{ fontSize: 10, fill: "var(--text-dim)" }} interval="preserveStartEnd" minTickGap={28}
-                    tickFormatter={(v: string) => v.split("–")[0]} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--text-dim)" }} />
-                  <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12 }} />
-                  <Bar dataKey="count" fill="var(--accent)" />
-                </BarChart>
-              </ResponsiveContainer>
+              <Histogram bins={r.stats.histogram} />
             </div>
-            <p className="mt-1 text-[11px] text-dim">Tokens per chunk (x) against how many chunks fall in that range (y).</p>
+            <p className="mt-1 text-xs text-dim">Tokens per chunk (x) against how many chunks fall in that range (y).</p>
           </Card>
         ))}
       </div>

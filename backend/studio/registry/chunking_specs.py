@@ -220,6 +220,54 @@ registry.register(MethodSpec(
     compare_with=["structure_aware"],
     recommended_experiment="Index a table-heavy document with Structure-aware and with this method, then ask a question about one row and compare the top result."))
 
+registry.register(MethodSpec(
+    id="semantic", category=C, stage=STAGE, name="Semantic chunking",
+    summary="Cut where the meaning shifts, found by embedding every sentence and comparing neighbours.",
+    how_it_works="Splits text into sentences (tables stay whole), embeds each one, and measures how far each sentence is from the next. "
+                 "A new chunk starts where that distance exceeds the chosen percentile of all distances, once the current chunk has "
+                 "`min_tokens`; a chunk never grows past `max_tokens`. Chunks follow topic changes instead of a size budget.",
+    advantages=["Chunks tend to be about one thing", "No fixed size to guess", "Works on any prose"],
+    disadvantages=["Embeds every sentence (cost and time scale with the document)", "Chunk sizes vary a lot",
+                   "Results depend on the embedding model and the percentile, which need tuning on your data"],
+    suitable_documents=["Long prose with clear topic changes"], use_cases=["Articles, reports, transcripts"],
+    params=[ParamSpec(name="provider", label="Embedding provider", type="select", default="azure_openai",
+                      options=["azure_openai", "local_hash"], help="Used to embed sentences. local_hash is an offline demo that only matches shared words."),
+            ParamSpec(name="breakpoint_percentile", label="Breakpoint percentile", type="int", default=90, min=50, max=99,
+                      help="Cut at gaps larger than this percentile of all sentence-to-sentence distances. Higher = fewer, larger chunks."),
+            ParamSpec(name="min_tokens", label="Minimum chunk size", type="int", default=60, min=1, max=2000, unit="tokens",
+                      help="Do not cut before the chunk has at least this many tokens."),
+            ParamSpec(name="max_tokens", label="Maximum chunk size", type="int", default=500, min=20, max=8000, unit="tokens",
+                      help="Force a cut when a chunk would exceed this."), TOKENIZER],
+    inputs=["canonical text"], outputs=["chunks with character spans"], requires=["an embedding provider"],
+    performance_notes="One embedding call per ~64 sentences; results are cached, so re-running costs nothing.",
+    cost_notes="Embedding tokens for the whole document each time the text changes.",
+    limitations=["Sentence splitting is rule-based", "min_tokens must not exceed max_tokens", "Not meaningful with the offline demo provider"],
+    compare_with=["recursive", "sentence", "structure_aware"],
+    recommended_experiment="Chunk a long report semantically and with Recursive at a similar size, index both, and compare them in the Evaluation Center."))
+
+registry.register(MethodSpec(
+    id="parent_child", category=C, stage=STAGE, name="Parent-child (small-to-big)",
+    summary="Search small chunks for precision, then give the model the larger passage around each match.",
+    how_it_works="The text is split into large parent passages (recursive splitting); each parent is divided into small child chunks "
+                 "with a token window. Only children are embedded, so a query matches a narrow span. Each child remembers its parent. "
+                 "At search time, choose 'expand to parent' to return the whole parent instead of the child; several children of one "
+                 "parent collapse into a single result.",
+    advantages=["Precise matching with full context in the answer prompt", "One parent returned even if many children match"],
+    disadvantages=["Two levels to store and reason about", "Parents are bigger, so answers spend more prompt tokens",
+                   "Children are blind to anything outside their window when matching"],
+    suitable_documents=["Long prose where answers need surrounding context"], use_cases=["Q&A over reports and handbooks"],
+    params=[ParamSpec(name="parent_size", label="Parent size", type="int", default=1200, min=20, max=8000, unit="tokens",
+                      help="Largest passage returned when expanding to the parent."),
+            ParamSpec(name="child_size", label="Child size", type="int", default=200, min=20, max=2000, unit="tokens",
+                      help="Size of the small chunks that are embedded and searched. Must be smaller than the parent."),
+            ParamSpec(name="child_overlap", label="Child overlap", type="int", default=20, min=0, max=1000, unit="tokens",
+                      help="Overlap between neighbouring children. Must be smaller than the child size."), TOKENIZER],
+    inputs=["canonical text"], outputs=["child chunks with a parent reference"],
+    performance_notes="More, smaller vectors than a single-level chunker.", cost_notes="Embedding cost follows the children only.",
+    limitations=["Parents come from recursive splitting, which ignores tables and layout", "Page citations use the child's pages"],
+    compare_with=["recursive", "structure_aware"],
+    recommended_experiment="Index with this method, search with and without 'expand to parent', and compare answers on questions that need context."))
+
 # ---------------------------------------------------------------- planned (not executable yet)
 _planned("overlapping", "Overlapping chunking (preset)",
          "Any size-based method with overlap > 0.",
@@ -238,25 +286,10 @@ _planned("section_based", "Document section-based", "One chunk per detected sect
          "Uses detected section titles from the parser as boundaries.",
          ["Chunks match sections"], ["Sections vary wildly in size"],
          "Planned (Stage 3). Section titles are detected for numbered PDF headings, but section chunking is not built.")
-_planned("semantic", "Semantic chunking",
-         "Cut where the meaning changes, found by comparing sentence embeddings.",
-         "Embed each sentence, measure similarity between neighbours, and cut where it drops past a threshold or "
-         "percentile.",
-         ["Topic-pure chunks"], ["Slow, needs embeddings for every sentence", "Less predictable sizes"],
-         "Planned (Stage 3). Needs the embedding service wired into the chunking lab.",
-         requires=["embedding model"], creds=True)
 _planned("topic_based", "Topic-based", "Cut at topic changes found by clustering or a topic model.",
          "Cluster sentence embeddings or run a topic segmentation model.",
          ["Topic-coherent chunks"], ["Heavy, unstable on short texts"],
          "Planned (Stage 3). Not built.", requires=["embedding model"], creds=True)
-_planned("parent_child", "Parent-child hierarchical", "Embed small child chunks, keep large parents for context.",
-         "Chunks at two sizes; children point to parent ids; retrieval matches children and returns parents.",
-         ["Precise match with full context"], ["Two levels to store and manage"],
-         "Planned (Stage 4), together with parent-document retrieval.")
-_planned("small_to_big", "Small-to-big", "Search small chunks, send the surrounding section to the model.",
-         "Retrieve a small chunk, then expand to its parent or neighbours before generation.",
-         ["Precision plus context"], ["More tokens per answer"],
-         "Planned (Stage 4), together with parent-document retrieval.")
 _planned("layout_aware", "Layout-aware", "Use reading order, columns and block types from a layout model.",
          "Needs a layout-analysis parser (Docling, Unstructured, cloud document AI).",
          ["Handles multi-column and complex pages"], ["Needs a layout parser"],

@@ -173,6 +173,21 @@ class IndexChunk(Base):
     pages: Mapped[list] = mapped_column(JSON)
     printed_pages: Mapped[list] = mapped_column(JSON)
     section: Mapped[str | None] = mapped_column(Text)
+    parent_id: Mapped[str | None] = mapped_column(String(32), index=True)  # set by the parent-child chunker
+
+
+class IndexParent(Base):
+    """The larger passage a small chunk belongs to (small-to-big retrieval). Not embedded; returned for context."""
+    __tablename__ = "index_parents"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    index_id: Mapped[str] = mapped_column(ForeignKey("indexes.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[str] = mapped_column(String(32))
+    version_id: Mapped[str] = mapped_column(String(32))
+    filename: Mapped[str] = mapped_column(String(500))
+    text: Mapped[str] = mapped_column(Text)
+    tokens: Mapped[int] = mapped_column(Integer)
+    pages: Mapped[list] = mapped_column(JSON)
+    section: Mapped[str | None] = mapped_column(Text)
 
 
 class RetrievalRun(Base):

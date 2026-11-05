@@ -13,8 +13,8 @@ export default function IndexesPage() {
   const qc = useQueryClient();
   const { project, loading } = useProject();
   const pid = project?.id;
-  const providers = useQuery({ queryKey: ["providers"], queryFn: () => api<Providers>("/providers") });
-  const catalog = useQuery({ queryKey: ["catalog", "chunking"], queryFn: () => api<Catalog>("/method-catalog?category=chunking") });
+  const providers = useQuery({ queryKey: ["providers"], staleTime: 60_000, queryFn: () => api<Providers>("/providers") });
+  const catalog = useQuery({ queryKey: ["catalog", "chunking"], staleTime: Infinity, queryFn: () => api<Catalog>("/method-catalog?category=chunking") });
   const docs = useQuery({ queryKey: ["docs-ready", pid], enabled: !!pid, queryFn: () => api<{ items: Doc[] }>(`/projects/${pid}/documents?status=ready&limit=500`) });
   const indexes = useQuery({
     queryKey: ["indexes", pid], enabled: !!pid,
@@ -69,11 +69,11 @@ export default function IndexesPage() {
                   <span><span className="font-medium">{e.id}</span>{e.model && <span className="text-dim"> · {e.model}</span>}
                     {!e.semantic && <span className="block text-xs text-warn">Offline demo: matches shared words, not meaning.</span>}
                     {!e.available && <span className="block text-xs text-dim">{e.detail}</span>}</span>
-                  <Badge tone={e.available ? "good" : "warn"}>{e.available ? "available" : "not configured"}</Badge>
+                  {!e.available && <Badge tone="warn">not configured</Badge>}
                 </li>
               ))}
               {providers.data?.vector_stores.map((v) => (
-                <li key={v.id} className="flex items-center justify-between"><span><span className="font-medium">{v.id}</span><span className="text-dim"> · {v.mode}</span></span><Badge tone="good">available</Badge></li>
+                <li key={v.id} className="flex items-center justify-between"><span><span className="font-medium">{v.id}</span><span className="text-dim"> · {v.mode}</span></span></li>
               ))}
             </ul>
             <p className="mt-3 text-xs text-dim">Answer generation: {providers.data?.generation.configured ? "configured" : providers.data?.generation.detail}</p>

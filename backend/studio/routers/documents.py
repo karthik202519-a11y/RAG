@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import generation, jobs
 from ..artifacts import get_store
@@ -129,7 +129,7 @@ def list_documents(project_id: str, q: str | None = None, status: str | None = N
                    limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0),
                    user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     get_project(db, user, project_id)
-    stmt = select(Document).where(Document.project_id == project_id)
+    stmt = select(Document).where(Document.project_id == project_id).options(selectinload(Document.versions))
     if q:
         stmt = stmt.where(Document.filename.ilike(f"%{q}%"))
     if collection_id:
