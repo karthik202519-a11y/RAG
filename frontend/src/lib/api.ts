@@ -144,6 +144,7 @@ export type FiguresInfo = {
 };
 export type Provider = { id: string; model: string | null; available: boolean; detail: string; semantic: boolean };
 export type Providers = {
+  default_embedding_provider?: string;
   embedding: Provider[]; vector_stores: { id: string; available: boolean; mode: string; detail?: string }[];
   generation: { configured: boolean; detail: string; default_model: string | null; models: string[] };
 };

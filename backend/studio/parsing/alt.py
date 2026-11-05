@@ -126,6 +126,8 @@ def extract_ocr_image(path: Path, doc_name: str) -> list[dict]:
 
 # ----------------------------------------------------------------------------- Azure Document Intelligence
 def azure_di_status() -> tuple[bool, str]:
+    if settings.disable_azure:
+        return False, "Azure is disabled by STUDIO_DISABLE_AZURE. Use a local parser."
     if settings.azure_di_endpoint and settings.azure_di_key:
         return True, "configured"
     return False, "Set in .env: AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT and AZURE_DOCUMENT_INTELLIGENCE_KEY"

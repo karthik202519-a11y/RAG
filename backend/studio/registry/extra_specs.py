@@ -15,6 +15,13 @@ def put(**kw) -> None:
 
 NOT_TESTED_LIVE = "The adapter is tested against recorded responses in the service's documented format; it has not been run against the live service."
 
+put(id="nvidia_chat", category="generation", stage="Generation", name="NVIDIA hosted chat models",
+    summary="Select nvidia:<catalog-model-id> to use a model hosted by NVIDIA.",
+    how_it_works="Calls the OpenAI-compatible /v1/chat/completions endpoint with max_tokens, provider authentication and the exact retrieved evidence.",
+    advantages=["No local GPU required", "Multiple downloadable-weight model families"], disadvantages=["Account quotas apply", "Licenses vary by model", "Source passages leave the computer"],
+    status="requires_credentials", needs_cloud_credentials=True, requires=["NVIDIA_API_KEY"], limitations=[NOT_TESTED_LIVE],
+    references=["https://docs.api.nvidia.com/nim/docs/product"])
+
 # ------------------------------------------------------------------------------ embeddings
 put(id="fastembed", category="embedding", stage="Embedding", name="FastEmbed local models (BGE, E5, MiniLM ...)",
     summary="Real semantic embeddings computed on your own machine with ONNX models: no key, no server, no GPU.",

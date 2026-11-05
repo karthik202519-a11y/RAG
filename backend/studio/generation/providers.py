@@ -10,7 +10,7 @@ import httpx
 
 from ..config import settings
 
-PREFIXES = ("openai", "anthropic", "gemini", "ollama")
+PREFIXES = ("openai", "anthropic", "gemini", "ollama", "nvidia")
 
 
 class ProviderChatError(RuntimeError):
@@ -29,6 +29,8 @@ def status(provider: str) -> tuple[bool, str]:
         return (True, "configured") if settings.anthropic_api_key else (False, "Set in .env: ANTHROPIC_API_KEY")
     if provider == "gemini":
         return (True, "configured") if settings.gemini_api_key else (False, "Set in .env: GEMINI_API_KEY")
+    if provider == "nvidia":
+        return (True, "configured; NVIDIA account quotas apply") if settings.nvidia_api_key else (False, "Set in .env: NVIDIA_API_KEY")
     if provider == "ollama":
         try:
             httpx.get(settings.ollama_url.rstrip("/") + "/api/tags", timeout=0.7).raise_for_status()
@@ -41,7 +43,7 @@ def status(provider: str) -> tuple[bool, str]:
 def default_models() -> list[str]:
     """Prefixed model names that are usable right now, for the model picker."""
     pairs = (("openai", settings.openai_chat_model), ("anthropic", settings.anthropic_chat_model),
-             ("gemini", settings.gemini_chat_model), ("ollama", settings.ollama_chat_model))
+             ("gemini", settings.gemini_chat_model), ("nvidia", settings.nvidia_chat_model), ("ollama", settings.ollama_chat_model))
     return [f"{p}:{m}" for p, m in pairs if m and status(p)[0]]
 
 
@@ -59,6 +61,8 @@ def _post(url: str, headers: dict, body: dict, name: str) -> dict:
             continue
         if r.status_code == 404:
             raise ProviderChatError(f"{name}: model not found.")
+        if r.status_code == 429:
+            raise ProviderChatError(f"{name}: rate limit or account quota reached (HTTP 429). Wait and check your provider's free-tier limits.")
         if r.status_code >= 400:
             raise ProviderChatError(f"{name} request failed (HTTP {r.status_code}).")
         return r.json()
@@ -68,6 +72,21 @@ def _post(url: str, headers: dict, body: dict, name: str) -> dict:
 def _split_system(messages: list[dict]) -> tuple[str, list[dict]]:
     system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
     return system, [m for m in messages if m["role"] != "system"]
+
+
+def _google_parts(content) -> list[dict]:
+    if isinstance(content, str):
+        return [{"text": content}]
+    parts = []
+    for item in content:
+        if item.get("type") == "text":
+            parts.append({"text": item["text"]})
+        elif item.get("type") == "image_url":
+            url = item["image_url"]["url"]
+            if not url.startswith("data:image/png;base64,"):
+                raise ProviderChatError("Google vision expects an inline PNG image.")
+            parts.append({"inlineData": {"mimeType": "image/png", "data": url.split(",", 1)[1]}})
+    return parts
 
 
 def chat(provider: str, model: str, messages: list[dict], temperature: float, max_output_tokens: int):
@@ -82,6 +101,15 @@ def chat(provider: str, model: str, messages: list[dict], temperature: float, ma
         j = _post("https://api.openai.com/v1/chat/completions", {"Authorization": f"Bearer {settings.openai_api_key}"}, body, "OpenAI")
         ch = j["choices"][0]
         return ch["message"].get("content") or "", j["usage"]["prompt_tokens"], j["usage"]["completion_tokens"], ch.get("finish_reason"), j.get("model", model)
+    if provider == "nvidia":
+        j = _post("https://integrate.api.nvidia.com/v1/chat/completions",
+                  {"Authorization": f"Bearer {settings.nvidia_api_key}"},
+                  {"model": model, "messages": messages, "temperature": temperature,
+                   "max_tokens": max_output_tokens, "stream": False}, "NVIDIA")
+        if not j.get("choices"):
+            raise ProviderChatError("NVIDIA returned no answer choices.")
+        ch, usage = j["choices"][0], j.get("usage") or {}
+        return ch["message"].get("content") or "", usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0), ch.get("finish_reason"), j.get("model", model)
     if provider == "anthropic":
         system, rest = _split_system(messages)
         body = {"model": model, "max_tokens": max_output_tokens, "temperature": temperature, "messages": rest}
@@ -93,13 +121,20 @@ def chat(provider: str, model: str, messages: list[dict], temperature: float, ma
         return text, j["usage"]["input_tokens"], j["usage"]["output_tokens"], stop, j.get("model", model)
     if provider == "gemini":
         system, rest = _split_system(messages)
-        body = {"contents": [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]} for m in rest],
+        body = {"contents": [{"role": "model" if m["role"] == "assistant" else "user", "parts": _google_parts(m["content"])} for m in rest],
                 "generationConfig": {"temperature": temperature, "maxOutputTokens": max_output_tokens}}
         if system:
-            body["systemInstruction"] = {"parts": [{"text": system}]}
+            if model.startswith("gemma-3"):
+                body["contents"][0]["parts"].insert(0, {"text": system + "\n\n"})
+            else:
+                body["systemInstruction"] = {"parts": [{"text": system}]}
+        if model.startswith("gemma-4"):
+            body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": "minimal"}
         j = _post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", {"x-goog-api-key": settings.gemini_api_key}, body, "Gemini")
+        if not j.get("candidates"):
+            raise ProviderChatError("Google returned no answer candidates. Check the model, safety response and account quota.")
         cand = j["candidates"][0]
-        text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", []))
+        text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", []) if not p.get("thought"))
         u = j.get("usageMetadata", {})
         fin = {"STOP": "stop", "MAX_TOKENS": "length"}.get(cand.get("finishReason"), cand.get("finishReason"))
         return text, u.get("promptTokenCount", 0), u.get("candidatesTokenCount", 0), fin, j.get("modelVersion", model)

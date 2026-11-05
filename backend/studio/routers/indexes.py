@@ -30,6 +30,7 @@ def list_providers(user: User = Depends(current_user)) -> dict:
         ok, why = p.status()
         emb.append({"id": p.id, "model": p.model or None, "available": ok, "detail": why,
                     "semantic": p.id != "local_hash"})
+    emb.sort(key=lambda p: p["id"] != settings.embedding_provider)
     models = generation.configured_models()
     default = generation.default_model()
     gen_ok, gen_detail = generation.status_for(default)
@@ -37,12 +38,12 @@ def list_providers(user: User = Depends(current_user)) -> dict:
     for name, store in STORES.items():
         ok, detail = store.status()
         stores.append({"id": name, "available": ok, "mode": store.mode(), "detail": detail})
-    return {"embedding": emb,
+    return {"embedding": emb, "default_embedding_provider": settings.embedding_provider,
             "vector_stores": stores,
             "generation": {"configured": gen_ok, "detail": gen_detail,
                            "default_model": default or None, "models": models},
             "vision": {"configured": generation.vision_status()[0], "detail": generation.vision_status()[1],
-                       "model": settings.azure_vision_deployment or None}}
+                       "model": generation.default_vision_model() or None}}
 
 
 @router.post("/providers/{provider_id}/test")

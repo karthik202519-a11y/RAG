@@ -42,6 +42,8 @@ class AzureOpenAIEmbedder:
         return settings.azure_embedding_deployment
 
     def status(self) -> tuple[bool, str]:
+        if settings.disable_azure:
+            return False, "Azure is disabled by STUDIO_DISABLE_AZURE. Choose fastembed, gemini or nvidia."
         missing = [n for n, v in (("AZURE_OPENAI_ENDPOINT", settings.azure_endpoint),
                                   ("AZURE_OPENAI_API_KEY", settings.azure_api_key),
                                   ("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", settings.azure_embedding_deployment)) if not v]

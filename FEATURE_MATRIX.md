@@ -8,8 +8,12 @@ Legend: **Implemented + tested** = runs and has automated tests. **Verified live
 service (Azure OpenAI, Postgres, Qdrant server, MinIO, Redis) or in the browser, without an automated test.
 **Not built** = described, cannot be run.
 
-Counts from the registry (93 methods): **chunking 23 of 23 run; parsers 15 of 23; embedding 8 of 9; vector stores 5 of 11; retrieval 14 of 14; generation 5 of 6; multimodal 6 of 7.** Anything that cannot run says exactly why (a missing server, key or heavy dependency), and hosted-service adapters are marked as tested against simulated responses only.
+Counts from the registry (94 methods): **chunking 23 of 23 run; parsers 15 of 23; embedding 8 of 9; vector stores 5 of 11; retrieval 14 of 14; generation 6 of 7; multimodal 6 of 7.** Anything that cannot run says exactly why (a missing server, key or heavy dependency), and hosted-service adapters are marked as tested against simulated responses only.
 Automated tests are recorded by the current audit in `BUILD_PROGRESS.md` and the generated JUnit / compatibility reports under `output/`. Historical test counts are not current-suite evidence. Hosted API transports are simulated in automated tests.
+
+## Generation provider update
+
+Automatic key-based chat selection and NVIDIA chat routing are implemented. Existing Azure, OpenAI, Anthropic, Gemini and Ollama adapters remain supported. Local FastEmbed is the default embedding choice. A live Google Gemma request returned OK; this confirms a small generation request, not document-answer quality or image support. Hosted transport and routing regression tests use simulated responses.
 
 ## Storage Explorer
 

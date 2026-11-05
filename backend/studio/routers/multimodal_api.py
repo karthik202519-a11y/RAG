@@ -69,7 +69,7 @@ def chart_to_table(document_id: str, body: ChartIn, user: User = Depends(current
         png = multimodal.render_crop(data, body.page, body.figure) if body.figure else multimodal.render_page(data, body.page, 150)
     except (KeyError, IndexError) as e:
         raise HTTPException(404, str(e)) from None
-    model = body.model or generation.service.settings.azure_vision_deployment
+    model = body.model or generation.default_vision_model()
     try:
         res = generation.service.chat_vision(model, multimodal.CHART_PROMPT, png, 900)
     except generation.GenerationError as e:

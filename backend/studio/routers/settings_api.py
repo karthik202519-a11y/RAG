@@ -35,6 +35,18 @@ def overview(user: User = Depends(current_user)) -> dict:
     db_kind = "PostgreSQL" if settings.database_url.startswith("postgres") else "SQLite"
     return {
         "version": __version__,
+        "model_defaults": {"embedding_provider": settings.embedding_provider, "chat_model": gen.default_model(),
+                           "vision_model": gen.default_vision_model(), "azure_disabled": settings.disable_azure},
+        "hosted_setup": [
+            {"id": "gemini", "name": "Google AI Studio", "key_env": "GEMINI_API_KEY", "key_set": bool(settings.gemini_api_key),
+             "account_url": "https://aistudio.google.com/apikey", "base_url": "https://generativelanguage.googleapis.com/v1beta",
+             "chat_model": settings.gemini_chat_model,
+             "note": "Gemma has downloadable weights; Gemini and Gemini Embedding are proprietary. Free-tier access and quotas depend on model and account."},
+            {"id": "nvidia", "name": "NVIDIA API Catalog", "key_env": "NVIDIA_API_KEY", "key_set": bool(settings.nvidia_api_key),
+             "account_url": "https://build.nvidia.com/", "base_url": "https://integrate.api.nvidia.com/v1",
+             "chat_model": settings.nvidia_chat_model,
+             "note": "Developer access is for prototyping, subject to quotas and model licenses. The configured Llama chat model is text-only."},
+        ],
         "runtime": [
             {"name": "Database", "value": db_kind, "env": "DATABASE_URL"},
             {"name": "Artifact storage", "value": "S3 / MinIO" if settings.s3_endpoint else "Local folder", "env": "S3_ENDPOINT"},
@@ -63,6 +75,7 @@ def overview(user: User = Depends(current_user)) -> dict:
 class TestIn(BaseModel):
     target: Literal["database", "storage", "embedding", "chat", "vision", "qdrant", "faiss", "chroma", "lancedb", "pgvector"]
     model: str | None = None
+    provider: str | None = None
 
 
 @router.post("/test")
@@ -88,7 +101,10 @@ def _run(body: TestIn, db: Session) -> str:
         store.delete_prefix("healthcheck/")
         return "Wrote, read back and removed a test object."
     if t == "embedding":
-        p = PROVIDERS["azure_openai"]
+        provider = body.provider or settings.embedding_provider
+        if provider not in PROVIDERS:
+            raise RuntimeError(f"Unknown embedding provider '{provider}'.")
+        p = PROVIDERS[provider]
         ok, why = p.status()
         if not ok:
             raise RuntimeError(why)
@@ -102,7 +118,7 @@ def _run(body: TestIn, db: Session) -> str:
         import pymupdf
         pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 32, 32), False)
         pix.set_rect(pix.irect, (200, 30, 30))
-        r = gen.chat_vision(settings.azure_vision_deployment, "Name the colour of this image in one word.", pix.tobytes("png"), 100)
+        r = gen.chat_vision(gen.default_vision_model(), "Name the colour of this image in one word.", pix.tobytes("png"), 100)
         return f"{r.model} answered: {r.text.strip()[:60]}"
     if t == "qdrant":
         n = len(qdrant_store.client().get_collections().collections)

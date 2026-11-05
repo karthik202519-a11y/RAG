@@ -10,6 +10,11 @@ os.environ["STUDIO_DATA_DIR"] = str(_TMP)
 os.environ["DATABASE_URL"] = f"sqlite:///{(_TMP / 'boot.db').as_posix()}"
 os.environ["STUDIO_JOB_BACKEND"] = "thread"
 os.environ["STUDIO_SKIP_WARMUP"] = "1"
+os.environ["STUDIO_DISABLE_AZURE"] = "false"
+os.environ["STUDIO_CHAT_MODEL"] = ""
+os.environ["STUDIO_VISION_MODEL"] = ""
+os.environ["GEMINI_API_KEY"] = ""
+os.environ["NVIDIA_API_KEY"] = ""
 os.environ["STUDIO_SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ.pop("REDIS_URL", None)
 os.environ.pop("S3_ENDPOINT", None)
@@ -59,6 +64,8 @@ def client(tmp_path, monkeypatch):
     qdrant_store.reset_client()
     from studio.retrieval import service as _retr
     _retr._cache.clear()
+    for name, value in (("disable_azure", False), ("chat_model", ""), ("vision_model", ""), ("nvidia_api_key", ""), ("gemini_api_key", "")):
+        monkeypatch.setattr(settings, name, value)
     from studio.main import app, migrate
     migrate()
     with TestClient(app) as c:

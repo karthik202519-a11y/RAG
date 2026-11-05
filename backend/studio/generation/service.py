@@ -50,12 +50,26 @@ def configured_models() -> list[str]:
     from . import providers
     extra = [m.strip() for m in settings.azure_chat_deployments.split(",") if m.strip()]
     first = [settings.azure_chat_deployment] if settings.azure_chat_deployment else []
-    return list(dict.fromkeys(first + extra + providers.default_models()))
+    if settings.disable_azure:
+        first, extra = [], []
+    preferred = [settings.chat_model] if settings.chat_model and settings.chat_model != "auto" and status_for(settings.chat_model)[0] else []
+    return list(dict.fromkeys(preferred + first + extra + providers.default_models()))
 
 
 def default_model() -> str:
-    """Prefer the configured Azure deployment, then a configured prefixed provider."""
+    """Honor an explicit model, or choose a configured key in a deterministic order."""
     from . import providers
+    if settings.chat_model == "auto":
+        for provider, model, key in (("gemini", settings.gemini_chat_model, settings.gemini_api_key),
+                                     ("nvidia", settings.nvidia_chat_model, settings.nvidia_api_key),
+                                     ("openai", settings.openai_chat_model, settings.openai_api_key)):
+            if key and model:
+                return f"{provider}:{model}"
+        if generation_status()[0]:
+            return settings.azure_chat_deployment
+        return next(iter(providers.default_models()), "")
+    if settings.chat_model:
+        return settings.chat_model
     if generation_status()[0]:
         return settings.azure_chat_deployment
     return next(iter(providers.default_models()), "")
@@ -69,6 +83,8 @@ def status_for(model: str) -> tuple[bool, str]:
 
 
 def generation_status() -> tuple[bool, str]:
+    if settings.disable_azure:
+        return False, "Azure is disabled by STUDIO_DISABLE_AZURE. Configure GEMINI_API_KEY or NVIDIA_API_KEY and select a prefixed model."
     missing = [n for n, v in (("AZURE_OPENAI_ENDPOINT", settings.azure_endpoint), ("AZURE_OPENAI_API_KEY", settings.azure_api_key),
                               ("AZURE_OPENAI_CHAT_DEPLOYMENT", settings.azure_chat_deployment)) if not v]
     return (not missing, f"Set in .env: {', '.join(missing)}" if missing else "configured")
@@ -116,7 +132,17 @@ def chat_complete(model: str, messages: list[dict], temperature: float, max_outp
                       getattr(details, "reasoning_tokens", 0) or 0, r.choices[0].finish_reason, r.model)
 
 
+def default_vision_model() -> str:
+    return settings.vision_model or settings.azure_vision_deployment
+
+
 def vision_status() -> tuple[bool, str]:
+    from . import providers
+    prov, _ = providers.split_model(default_vision_model())
+    if prov:
+        return providers.status(prov) if prov in ("gemini", "nvidia", "openai") else (False, "Choose an image-capable gemini:, nvidia: or openai: model for STUDIO_VISION_MODEL.")
+    if settings.disable_azure:
+        return False, "Azure is disabled. Set STUDIO_VISION_MODEL to an image-capable model, e.g. gemini:gemma-4-26b-a4b-it, and add its API key."
     missing = [n for n, v in (("AZURE_OPENAI_ENDPOINT", settings.azure_endpoint), ("AZURE_OPENAI_API_KEY", settings.azure_api_key),
                               ("AZURE_OPENAI_VISION_DEPLOYMENT", settings.azure_vision_deployment)) if not v]
     return (not missing, f"Set in .env: {', '.join(missing)}" if missing else "configured")
@@ -125,6 +151,15 @@ def vision_status() -> tuple[bool, str]:
 def chat_vision(model: str, prompt: str, image_png: bytes, max_output_tokens: int = 700) -> ChatResult:
     """Ask a vision-capable deployment about one PNG image."""
     import base64
+    from . import providers
+    model = model or default_vision_model()
+    prov, _ = providers.split_model(model)
+    if prov:
+        if prov not in ("gemini", "nvidia", "openai"):
+            raise GenerationNotConfigured("This provider does not have an image adapter.")
+        b64 = base64.b64encode(image_png).decode()
+        return chat_complete(model, [{"role": "user", "content": [
+            {"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}}]}], 0.0, max_output_tokens)
     ok, why = vision_status()
     if not ok:
         raise GenerationNotConfigured(why)

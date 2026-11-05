@@ -53,6 +53,10 @@ class Settings:
     azure_endpoint: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
     azure_api_key: str = os.getenv("AZURE_OPENAI_API_KEY", "")
     azure_embedding_deployment: str = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "")
+    disable_azure: bool = os.getenv("STUDIO_DISABLE_AZURE", "false").lower() in ("1", "true", "yes")
+    chat_model: str = os.getenv("STUDIO_CHAT_MODEL", "")
+    vision_model: str = os.getenv("STUDIO_VISION_MODEL", "")
+    embedding_provider: str = os.getenv("STUDIO_EMBEDDING_PROVIDER", "fastembed")
     # Other providers. All optional; each shows as "not configured" until its setting is present.
     fastembed_model: str = os.getenv("FASTEMBED_MODEL", "BAAI/bge-small-en-v1.5")      # local ONNX embeddings, no key
     fastembed_rerank_model: str = os.getenv("FASTEMBED_RERANK_MODEL", "Xenova/ms-marco-MiniLM-L-6-v2")
@@ -68,7 +72,9 @@ class Settings:
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     anthropic_chat_model: str = os.getenv("ANTHROPIC_CHAT_MODEL", "claude-haiku-4-5")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
-    gemini_chat_model: str = os.getenv("GEMINI_CHAT_MODEL", "gemini-2.0-flash")
+    gemini_chat_model: str = os.getenv("GEMINI_CHAT_MODEL", "gemma-4-26b-a4b-it")
+    nvidia_api_key: str = os.getenv("NVIDIA_API_KEY", "")
+    nvidia_chat_model: str = os.getenv("NVIDIA_CHAT_MODEL", "meta/llama-3.3-70b-instruct")
     ollama_url: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
     ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
     ollama_chat_model: str = os.getenv("OLLAMA_CHAT_MODEL", "llama3.2")

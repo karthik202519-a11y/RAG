@@ -271,7 +271,7 @@ def describe_figures(document_id: str, body: DescribeIn = DescribeIn(), user: Us
                        {"pages": body.pages, "model": body.model, "force": body.force})
     db.add(AuditEvent(user_id=user.id, action="document.describe_figures", target=d.id, detail={"pages": body.pages or "all"}))
     db.commit()
-    return {"job_id": job.id, "pages": body.pages or flagged, "model": body.model or generation.service.settings.azure_vision_deployment}
+    return {"job_id": job.id, "pages": body.pages or flagged, "model": body.model or generation.default_vision_model()}
 
 
 @router.get("/documents/{document_id}/source")

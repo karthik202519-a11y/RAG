@@ -43,7 +43,7 @@ export default function IndexesPage() {
   const m = methods.find((x) => x.id === method);
   const p = params ?? (m ? defaults(m) : {});
   const available = (providers.data?.embedding ?? []).filter((e) => e.available);
-  const provider = providerId || available.find((e) => e.semantic)?.id || available[0]?.id || "";
+  const provider = providerId || available.find(e=>e.id===providers.data?.default_embedding_provider)?.id || available.find((e) => e.semantic)?.id || available[0]?.id || "";
   const selDocs = (docs.data?.items ?? []).filter((d) => !excluded.includes(d.id));
   const selTokens = selDocs.reduce((a, d) => a + (d.latest_version?.token_count ?? 0), 0);
   const problem = validate(m, p);

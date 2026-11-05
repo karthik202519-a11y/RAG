@@ -45,7 +45,7 @@ def describe_figures(ctx: JobContext) -> None:
     ok, why = generation.vision_status()
     if not ok:
         raise PermanentJobError(f"Vision model is not configured: {why}")
-    model = job.params.get("model") or settings.azure_vision_deployment
+    model = job.params.get("model") or generation.default_vision_model()
     force = bool(job.params.get("force"))
     wanted = set(job.params.get("pages") or [])
     store = get_store()

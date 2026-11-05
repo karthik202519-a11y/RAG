@@ -22,6 +22,14 @@ Open [RAG](http://localhost:3000). Select **Guided RAG example (synthetic)** to 
 
 The examples demonstrate behavior; four synthetic questions do not establish retrieval quality.
 
+## Automatic generation provider selection
+
+Set `STUDIO_CHAT_MODEL=auto` in your local `.env`. RAG selects the first configured generation provider in this order: Google AI Studio (`GEMINI_API_KEY`), NVIDIA (`NVIDIA_API_KEY`), OpenAI (`OPENAI_API_KEY`), complete Azure OpenAI settings, then other configured providers. Selection checks configuration presence; invalid keys or exhausted quotas fail explicitly rather than silently switching services.
+
+`STUDIO_EMBEDDING_PROVIDER=fastembed` keeps embeddings local and independent of the generating LLM. Existing providers and saved indexes remain supported. Pin a provider with `STUDIO_CHAT_MODEL=gemini:<model>`, `nvidia:<model>`, `openai:<model>`, or an Azure deployment name. An empty value preserves the previous Azure-first behavior. Restart the API after editing `.env`.
+
+NVIDIA uses `https://integrate.api.nvidia.com/v1/chat/completions`. Google uses its `generateContent` API; the default Gemma model is configurable through `GEMINI_CHAT_MODEL`. Hosted free access is subject to account/model quotas; API-key presence does not establish free billing. Keys remain server-side in the ignored `.env` file.
+
 ## What you can do today
 
 - Sign up, create projects and collections.
