@@ -116,7 +116,7 @@ def run_one(db: Session, index: Index, q: EvalQuestion, cfg: dict) -> dict:
 
 
 def answer_check(db: Session, index: Index, q: EvalQuestion, cfg: dict) -> dict:
-    """Generate an answer and run deterministic checks. No LLM judge: quality beyond these checks is 'not available'."""
+    """Generate an answer and run deterministic checks. Optional LLM judge (cfg judge) adds faithfulness and relevance."""
     r = generation.answer(db, index, q.question, model=cfg.get("llm_model"), mode=cfg["mode"], top_k=min(cfg["k"], 8),
                           strict=True, max_output_tokens=int(cfg.get("max_output_tokens", 500)))
     text = r["answer"] or ""
@@ -126,6 +126,15 @@ def answer_check(db: Session, index: Index, q: EvalQuestion, cfg: dict) -> dict:
            "abstention_correct": (r["abstained"] == (not q.answerable)),
            "keyword_hit": (all(M.norm_text(w) in M.norm_text(text) for w in kws) if kws and not r["abstained"] else None),
            "tokens": (r["usage"]["prompt_tokens"] + r["usage"]["completion_tokens"]) if r["usage"] else 0, "text": text[:600]}
+    if cfg.get("judge") and not r["abstained"] and text:
+        from ..generation.judge import judge_answer
+        try:
+            j = judge_answer(q.question, text, [{"n": p["n"], "text": p["text"]} for p in r["context_passages"]], cfg.get("llm_model"))
+            out.update(faithfulness=j["faithfulness"], relevance=j["relevance"], contradicted=j["contradicted"],
+                       claims_total=j["claims_total"], tokens=out["tokens"] + j["tokens"],
+                       unsupported_claims=[c["claim"] for c in j["claims"] if c["verdict"] != "supported"][:5])
+        except Exception as e:  # one judge failure must not sink the run; it shows as not judged
+            out["judge_error"] = str(e)[:200]
     return out
 
 
@@ -152,8 +161,15 @@ def summarize(per_q: list[dict], cfg: dict) -> dict:
             return {"rate": round(sum(vals) / len(vals), 3) if vals else None, "n": len(vals)}
         answers = {"n": len(ans), "abstention_correct": rate("abstention_correct", ans), "citations_resolve": rate("citations_resolve", ans),
                    "has_citations": rate("has_citations", ans), "keyword_hit": rate("keyword_hit", ans),
-                   "tokens": sum(a["tokens"] for a in ans),
-                   "not_available": ["faithfulness", "answer relevance", "answer correctness (needs reference answers and an LLM judge)"]}
+                   "tokens": sum(a["tokens"] for a in ans)}
+        judged = [a for a in ans if a.get("faithfulness") is not None]
+        if judged:
+            rel = [a["relevance"] for a in judged if a.get("relevance")]
+            answers["faithfulness"] = {"mean": round(sum(a["faithfulness"] for a in judged) / len(judged), 3), "n": len(judged),
+                                       "contradicted_claims": sum(a.get("contradicted", 0) for a in judged),
+                                       "judge_failures": sum(1 for a in ans if a.get("judge_error"))}
+            answers["relevance"] = {"yes": rel.count("yes"), "partial": rel.count("partial"), "no": rel.count("no"), "n": len(rel)}
+        answers["not_available"] = ([] if judged else ["faithfulness", "answer relevance"]) + ["answer correctness (needs reference answers)"]
     return {"questions": len(per_q), "answerable": len(scored), "unanswerable": len(per_q) - len(scored), "k": cfg["k"],
             "retrieval": agg, "by_type": by_type,
             "latency_ms": {"p50": M.percentile(lat, 0.5), "p95": M.percentile(lat, 0.95), "mean": round(statistics.fmean(lat), 1) if lat else None},

@@ -8,15 +8,54 @@ from ..chunking.context import use_embedder
 from ..embeddings import NotConfigured, embed_texts, get_provider
 from ..chunking.tokens import count as count_tokens
 from ..models import Document, DocumentVersion, Index, IndexChunk, IndexParent, uid
-from ..vectorstores import qdrant_store
+from ..vectorstores import store_for
 from .runner import CANCEL_HOOKS, DEAD_HOOKS, JobContext, PermanentJobError, handler
 
 SLICE = 128  # chunks embedded and written per step; also the cancellation granularity
 
 
-def embed_input(chunk_text: str, ctype: str, section: str | None, section_prefix: bool) -> str:
-    """What the model sees. Text chunks get their section title as context; tables already carry it."""
-    return f"Section: {section}\n{chunk_text}" if section_prefix and ctype == "text" and section else chunk_text
+def embed_input(chunk_text: str, ctype: str, section: str | None, section_prefix: bool, context: str | None = None) -> str:
+    """What the model sees. Text chunks get their section title as context; tables already carry it.
+    A contextual index also prepends the model-written sentence stored on the chunk."""
+    body = f"Section: {section}\n{chunk_text}" if section_prefix and ctype == "text" and section else chunk_text
+    return f"{context}\n{body}" if context else body
+
+
+def _add_context(ctx: JobContext, db, rows: list, model: str) -> None:
+    """Write a situating sentence for every text chunk, in parallel. A chunk whose call fails simply goes without one."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from ..chunking.contextual import situate
+    from ..config import settings
+    targets = [n for n, r in enumerate(rows) if r.ctype == "text"]
+    ctx.progress(0.22, f"writing context for {len(targets)} chunks")
+    jobs_in = []
+    for n in targets:
+        r = rows[n]
+        prev = rows[n - 1].text if n > 0 and rows[n - 1].document_id == r.document_id else ""
+        nxt = rows[n + 1].text if n + 1 < len(rows) and rows[n + 1].document_id == r.document_id else ""
+        jobs_in.append((n, r.filename, r.section, prev, r.text, nxt))
+
+    def one(a):
+        try:
+            return a[0], situate(a[1], a[2], a[3], a[4], a[5], model)
+        except Exception:
+            return a[0], None
+
+    failed = 0
+    with ThreadPoolExecutor(max_workers=max(1, min(settings.eval_workers, len(jobs_in) or 1)), thread_name_prefix="ctx") as pool:
+        for done, (n, out) in enumerate(pool.map(one, jobs_in), 1):
+            if ctx.cancelled():
+                raise InterruptedError("cancelled")
+            if out is None:
+                failed += 1
+            else:
+                rows[n].context = out[0]
+            if done % 20 == 0:
+                ctx.progress(0.22 + 0.03 * done / len(jobs_in), f"context {done}/{len(jobs_in)}")
+    if failed == len(jobs_in) and jobs_in:
+        raise PermanentJobError("The chat model failed for every chunk, so no context could be written")
+    db.commit()
 
 
 @handler("build_index")
@@ -25,8 +64,9 @@ def build_index(ctx: JobContext) -> None:
     idx = db.get(Index, job.subject_id)
     if idx is None:
         raise PermanentJobError("Index no longer exists")
-    if idx.status == "ready" and qdrant_store.collection_dim(idx.collection) == idx.dimension:
+    if idx.status == "ready" and vs.collection_dim(idx.collection) == idx.dimension:
         return  # idempotent
+    vs = store_for(idx.store)
     cfg = idx.config
     provider = get_provider(idx.provider)
     ok, why = provider.status()
@@ -37,7 +77,7 @@ def build_index(ctx: JobContext) -> None:
     idx.status, idx.error = "building", None
     db.query(IndexChunk).filter(IndexChunk.index_id == idx.id).delete()
     db.commit()
-    qdrant_store.delete_collection(idx.collection)
+    vs.delete_collection(idx.collection)
 
     t0 = time.perf_counter()
     ctx.progress(0.02, "chunking")
@@ -77,6 +117,8 @@ def build_index(ctx: JobContext) -> None:
         raise PermanentJobError("The chosen documents produced no chunks")
     db.add_all(all_parents + rows)
     db.commit()
+    if cfg.get("contextual"):
+        _add_context(ctx, db, rows, cfg["contextual"]["model"])
 
     billed = hits = embedded_tokens = 0
     dim = None
@@ -85,22 +127,22 @@ def build_index(ctx: JobContext) -> None:
             raise InterruptedError("cancelled")
         part = rows[i:i + SLICE]
         try:
-            res = embed_texts(db, idx.provider, [embed_input(r.text, r.ctype, r.section, cfg["section_prefix"]) for r in part])
+            res = embed_texts(db, idx.provider, [embed_input(r.text, r.ctype, r.section, cfg["section_prefix"], r.context) for r in part])
         except NotConfigured as e:
             raise PermanentJobError(str(e)) from e
         if dim is None:
             dim = int(res.vectors.shape[1])
-            qdrant_store.create_collection(idx.collection, dim, idx.metric)
+            vs.create_collection(idx.collection, dim, idx.metric)
         elif res.vectors.shape[1] != dim:
             raise PermanentJobError("Provider returned vectors of inconsistent size")
-        qdrant_store.upsert(idx.collection, [r.id for r in part], res.vectors,
+        vs.upsert(idx.collection, [r.id for r in part], res.vectors,
                             [{"document_id": r.document_id, "ctype": r.ctype, "chunk_index": r.chunk_index} for r in part])
         billed += res.tokens_billed
         hits += res.cache_hits
         embedded_tokens += sum(r.tokens for r in part)
         ctx.progress(0.25 + 0.72 * min(1.0, (i + SLICE) / len(rows)), f"embedding {min(i + SLICE, len(rows))}/{len(rows)} chunks")
 
-    stored = qdrant_store.count(idx.collection)
+    stored = vs.count(idx.collection)
     if stored != len(rows):
         raise RuntimeError(f"Vector store holds {stored} vectors but {len(rows)} chunks were written")
     idx.dimension, idx.chunk_count, idx.tokens_embedded = dim, len(rows), embedded_tokens

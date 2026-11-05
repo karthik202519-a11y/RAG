@@ -113,7 +113,7 @@ export type EvalDatasetDetail = { id: string; name: string; description: string;
 export type MetricAgg = { mean: number | null; n: number; ci95: [number, number] | null };
 export type EvalRunInfo = {
   id: string; label: string; index_name: string; status: string; error: string | null; seconds: number | null; created_at: string;
-  config: { mode: string; k: number; split: string; transform: string; rerank: string; mmr: boolean; with_answers: boolean };
+  config: { mode: string; k: number; split: string; transform: string; rerank: string; mmr: boolean; with_answers: boolean; judge?: boolean };
   job: { progress: number; stage: string | null; status: string } | null;
   metrics: null | {
     questions: number; answerable: number; unanswerable: number; k: number; failed_questions?: number;
@@ -122,7 +122,9 @@ export type EvalRunInfo = {
     unanswerable_gate: { top1_dense_unanswerable: { min: number; max: number } | null; top1_dense_answerable: { min: number; median: number } | null;
       sweep: { threshold: number; answerable_kept: number; unanswerable_refused: number }[] | null };
     answers: null | { n: number; tokens: number; not_available: string[]; abstention_correct: { rate: number | null; n: number };
-      citations_resolve: { rate: number | null; n: number }; keyword_hit: { rate: number | null; n: number } };
+      citations_resolve: { rate: number | null; n: number }; keyword_hit: { rate: number | null; n: number };
+      faithfulness?: { mean: number; n: number; contradicted_claims: number; judge_failures: number };
+      relevance?: { yes: number; partial: number; no: number; n: number } };
   };
   per_question?: { question_id: string; question: string; qtype: string; answerable: boolean; split: string; error?: string;
     metrics: Record<string, number | null>; latency_ms: number; top1_dense_score: number | null;

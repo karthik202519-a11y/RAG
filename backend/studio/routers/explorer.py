@@ -12,15 +12,14 @@ from ..db import get_db
 from ..embeddings import ProviderError, embed_texts
 from ..models import IndexChunk, User
 from ..security import current_user
-from ..vectorstores import qdrant_store
+from ..vectorstores import store_for
 from .indexes import load_index
 
 router = APIRouter(tags=["embedding-explorer"])
 
 
 def _vectors(index, ids: list[str]) -> dict[str, np.ndarray]:
-    pts = qdrant_store.client().retrieve(index.collection, ids=[str(uuid.UUID(i)) for i in ids], with_vectors=True)
-    return {uuid.UUID(str(p.id)).hex: np.asarray(p.vector, dtype=np.float32) for p in pts}
+    return store_for(index.store).get_vectors(index.collection, ids)
 
 
 def pca_2d(x: np.ndarray) -> tuple[np.ndarray, list[float]]:

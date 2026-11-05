@@ -115,7 +115,10 @@ page-hit metrics (the diagram pages were already retrieved) but changed an answe
 ### Known limits
 
 - The 10,000-document load test has not been run.
-- Faithfulness and answer correctness are not measured (need an LLM judge or human labels).
+- Faithfulness comes from a model judge (claims checked against passages, quotes verified in code); it is an opinion, not ground truth. Answer correctness is not measured.
+- GraphRAG extraction keeps only entities found verbatim in the chunk, so it rejects most model proposals (445 rejected vs 139 relations kept on the handbook sample) and leaves many entities unconnected. Its value for answers has not been evaluated.
+- Contextual embedding and the FAISS store are built but not yet compared with the plain index on the evaluation set.
+- pdfplumber and pypdf are comparison-only; ingestion uses PyMuPDF, which found no tables on handbook pages where pdfplumber found six (worth investigating).
 - Structure-aware chunking still produces large table chunks; the row-level method exists but has not been compared in
   the Evaluation Center on a table-heavy question set.
 - Figure descriptions are page-level, unverified model output, and cost tokens.
@@ -124,7 +127,7 @@ page-hit metrics (the diagram pages were already retrieved) but changed an answe
 
 ## Next slices (in order)
 
-1. Compare row-level tables, semantic and parent-child chunking in the Evaluation Center on a table-heavy question set, and add UI controls for parent/neighbour expansion.
-2. LLM-judge faithfulness and human annotation; LLM-generated candidate questions with approval.
-3. Parser comparison lab (pdfplumber, Docling, OCR), pgvector and other vector stores, GraphRAG, pipeline builder.
-4. The 10,000-document load test, tracing, rate limits and a security review.
+1. Run the evaluation grid on the handbook to compare plain, contextual, row-level-table, semantic and parent-child indexes, and FAISS against Qdrant; add UI controls for parent/neighbour expansion.
+2. Investigate PyMuPDF missing tables that pdfplumber finds; consider a parser option at ingestion.
+3. pgvector and other vector stores, Docling and OCR parsers, global GraphRAG search, visual pipeline builder.
+4. The 10,000-document load test, OpenTelemetry export, rate limits and a security review.

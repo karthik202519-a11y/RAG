@@ -306,7 +306,7 @@ _planned("contextual", "Contextual chunk enrichment", "An LLM writes a short 'wh
          "For each chunk, send the document (or a window) and the chunk to an LLM and prepend its one-sentence "
          "context before embedding.",
          ["Often a large retrieval gain"], ["LLM call per chunk; cost scales with corpus size"],
-         "Planned (Stage 3). Needs the generation service wired in; will run on Azure OpenAI.",
+         "Built as an index option, not a chunking-playground method: tick 'Contextual embedding' when you build an index (Indexes & Embeddings). It changes what is embedded, not where text is cut.",
          requires=["LLM"], creds=True)
 _planned("proposition", "LLM proposition / atomic-fact chunking",
          "An LLM rewrites text into self-contained factual statements.",

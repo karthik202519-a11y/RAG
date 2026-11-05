@@ -28,7 +28,9 @@ Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 
 | **Docker Compose: Postgres, Redis, Qdrant, MinIO** | **Verified live**: all healthy |
 | **Docker Compose `--profile app` (API, Celery worker, web UI)** | **Verified live**: images build; a full run (upload, parse on the worker, index into the Qdrant server, search, answer, evaluate) succeeded and the data was confirmed in Postgres, MinIO and Qdrant |
 | Dependency completeness: every third-party import is declared in `requirements.txt` | Implemented + tested (this was a real bug the container run exposed) |
-| OpenTelemetry tracing, Langfuse, secret vault, rate limiting beyond login, file scanning | Not built |
+| **Traces page**: every search, answer and job with its measured steps as a waterfall, p50/p95, token totals | Implemented + tested; verified in the browser. Spans are the stage timings the code recorded, not OpenTelemetry |
+| **Settings page**: runtime configuration, which secrets are set (never their values), live connection tests (database, storage, Qdrant, FAISS, embedding, chat, vision) | Implemented + tested; embedding and chat tests verified live against Azure |
+| OpenTelemetry export, Langfuse, secret vault, rate limiting beyond login, file scanning | Not built |
 
 ## Ingestion
 
@@ -49,8 +51,8 @@ Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 
 |---|---|
 | PyMuPDF (text, tables, printed pages, sections, header/footer removal, diagram-page flag + PNG) | Implemented; exercised on a 186-page and a 297-page PDF |
 | Plain text, Markdown, DOCX, PPTX (one page per slide), XLSX (one page per sheet), HTML, CSV, JSON, XML | Implemented + tested |
-| pdfplumber, Docling, Unstructured, Tika, Tesseract, PaddleOCR, Azure Document Intelligence, AWS Textract, Google Document AI, LlamaParse | Not built |
-| Side-by-side parser comparison UI | Not built |
+| **Parser Lab**: PyMuPDF, pdfplumber and pypdf on the same pages side by side, with text, table counts, timings and word-level agreement | Implemented + tested; verified on the handbook (pages 120 to 122: pdfplumber found 6 tables, PyMuPDF 0). Comparison only: ingestion still uses PyMuPDF |
+| Docling, Unstructured, Tika, Tesseract, PaddleOCR, Azure Document Intelligence, AWS Textract, Google Document AI, LlamaParse | Not built |
 
 ## Chunking (registry category `chunking`): 12 run, 12 do not
 
@@ -61,7 +63,8 @@ Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 
 | Overlapping / non-overlapping | Not separate methods: the `overlap` parameter |
 | **Semantic chunking**: split where embedding similarity between neighbouring sentences drops | Implemented + tested; uses the project embedder (cached, parallel batches) |
 | **Parent-child (small-to-big)**: embed small children, return the larger parent; neighbour expansion at query time | Implemented + tested; backend and API only, no UI control for expansion yet |
-| HTML structure, document section, topic, layout-aware, code-aware, JSON/XML structure, contextual enrichment, LLM proposition, adaptive | Not built |
+| **Contextual embedding** (index option, not a playground method): a chat model writes one situating sentence per text chunk from the file name, section and neighbouring text; it is embedded with the chunk and stored so you can read it | Implemented + tested with a fake model; not yet compared on the evaluation set |
+| HTML structure, document section, topic, layout-aware, code-aware, JSON/XML structure, LLM proposition, adaptive | Not built |
 
 Every chunk has exact character offsets, pages, printed pages and section. Measured per run: chunk count, token
 distribution, duplication, coverage, mid-sentence endings, embedding tokens, optional cost, timing.
@@ -85,7 +88,9 @@ distribution, duplication, coverage, mid-sentence endings, embedding tokens, opt
 | Grounded answers: numbered passages in a token budget, exact-prompt inspector, citation check, refusal, score gate | Implemented + tested with a fake model; verified live with `gpt-4o-mini` |
 | Citation check proves the `[n]` exists, **not** that the passage supports the claim | Stated in the UI |
 | **Vision descriptions of diagram pages** (`gpt-4o`), checkpointed per page, idempotent, searchable | Implemented + tested with a fake model; verified live on 4 real pages; turned a refused diagram question into a correct answer |
-| Other vector stores, embedding providers, LLM providers; graph retrieval | Not built |
+| **FAISS vector store** (exact, flat; filters run inside the search), chosen per index; same top results as Qdrant in tests | Implemented + tested; connection test verified in the browser |
+| **GraphRAG slice**: a model extracts entities and relations per chunk; anything not found in the chunk text is rejected; communities by modularity; local graph search compared with dense search; interactive graph | Implemented + tested with a fake model; **verified live** on 60 handbook chunks (534 entities, 139 relations, 445 model proposals rejected as not in the text, 332 entities with no relations). Not evaluated for answer quality; no global (community-summary) search |
+| pgvector, Chroma, Azure AI Search and the other vector stores; other embedding and LLM providers | Not built |
 | Streaming answers, persisted answers | Not built |
 
 ## Evaluation Center
@@ -101,7 +106,9 @@ distribution, duplication, coverage, mid-sentence endings, embedding tokens, opt
 | Latency p50/p95, LLM tokens, per-type breakdown, unanswerable score-gate sweep | Implemented + tested |
 | Answer-level deterministic checks (correct refuse/answer, citations resolve, keyword present) | Implemented + tested |
 | CSV and JSON export | Implemented + tested |
-| Faithfulness, answer relevance, answer correctness (need an LLM judge or human labels) | **Not built**; the UI lists them as not available |
+| **LLM judge**: splits an answer into claims and checks each against the passages; a claim counts as supported only if the quote the judge gives really occurs in the passage. Per-answer button in the Retrieval Lab and an optional evaluation-run setting | Implemented + tested with a fake model; verified live (faithful answer 1.0; answer with a wrong and an invented claim 0.33). A model's opinion, not ground truth |
+| **Experiment grid**: run every combination of indexes, modes, k and rerankers on the same questions (up to 24 runs) | Implemented + tested; compare results with the existing paired comparison |
+| Answer correctness (needs reference answers) | **Not built**; the UI lists it as not available |
 | LLM-generated candidate questions with human approval; human annotation UI | Not built (the `approved` flag exists) |
 | Ragas / DeepEval integration | Not built |
 
@@ -115,6 +122,7 @@ distribution, duplication, coverage, mid-sentence endings, embedding tokens, opt
 
 ## Not started
 
-Parser comparison lab, GraphRAG, pipeline builder, experiment studio (beyond run comparison), traces and monitoring,
-provider and connector settings UI, recommendation engine, context compression, multimodal retrieval beyond
-vision descriptions, contextual chunking, other vector databases, the 10,000-document load test.
+Pipeline builder (the Retrieval Lab already composes transform, retrieval, rerank and MMR, but there is no visual builder),
+experiment reports and isolated experiment indexes, OpenTelemetry export, recommendation engine, context compression,
+multimodal retrieval beyond vision descriptions, global GraphRAG search with community summaries, other vector databases,
+the 10,000-document load test.

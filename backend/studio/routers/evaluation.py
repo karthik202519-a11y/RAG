@@ -179,6 +179,7 @@ class RunIn(BaseModel):
     rerank: Literal["none", "llm"] = "none"
     mmr: bool = False
     with_answers: bool = False
+    judge: bool = Field(False, description="Also judge faithfulness of each answer with the chat model (extra LLM calls)")
     llm_model: str | None = Field(None, max_length=100)
 
 
@@ -211,6 +212,33 @@ def start_run(dataset_id: str, body: RunIn, user: User = Depends(current_user), 
     db.commit()
     job = jobs.enqueue(db, d.project_id, "run_eval", r.id)
     return run_out(r, job=job)
+
+
+MAX_GRID = 24
+
+
+class GridIn(BaseModel):
+    index_ids: list[str] = Field(min_length=1, max_length=8)
+    modes: list[Literal["dense", "bm25", "hybrid"]] = Field(default_factory=lambda: ["dense"], min_length=1, max_length=3)
+    ks: list[int] = Field(default_factory=lambda: [5], min_length=1, max_length=4)
+    rerank: list[Literal["none", "llm"]] = Field(default_factory=lambda: ["none"], min_length=1, max_length=2)
+    split: Literal["all", "train", "validation", "test"] = "all"
+    transform: Literal["none", "rewrite", "multi_query", "hyde", "decompose"] = "none"
+    mmr: bool = False
+
+
+@router.post("/eval-datasets/{dataset_id}/grid", status_code=201)
+def start_grid(dataset_id: str, body: GridIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Run every combination of index x mode x k x rerank on the same questions, so results compare like with like."""
+    combos = [(i, m, k, rr) for i in dict.fromkeys(body.index_ids) for m in dict.fromkeys(body.modes)
+              for k in dict.fromkeys(body.ks) for rr in dict.fromkeys(body.rerank)]
+    if len(combos) > MAX_GRID:
+        raise HTTPException(422, f"That grid is {len(combos)} runs; the limit is {MAX_GRID}. Narrow one of the lists.")
+    runs = []
+    for i, m, k, rr in combos:
+        runs.append(start_run(dataset_id, RunIn(index_id=i, mode=m, k=k, rerank=rr, split=body.split, transform=body.transform, mmr=body.mmr),
+                              user, db))
+    return {"count": len(runs), "runs": runs}
 
 
 @router.get("/eval-datasets/{dataset_id}/runs")

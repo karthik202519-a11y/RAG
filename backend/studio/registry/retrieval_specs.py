@@ -52,9 +52,18 @@ registry.register(MethodSpec(
     disadvantages=["Embedded mode allows one process", "HNSW settings are not exposed in the UI yet"],
     limitations=["Distance is fixed to cosine for now", "Quantization and HNSW parameters are not configurable yet"],
     compare_with=["pgvector", "chroma"]))
+registry.register(MethodSpec(
+    id="faiss", category="vector_store", stage="Indexing", name="FAISS (exact, flat)",
+    summary="Meta's open-source similarity-search library, used here as an exact brute-force index kept in memory and saved to disk.",
+    how_it_works="Vectors are stored in a flat FAISS index (cosine = inner product on normalised vectors). Every query is compared with "
+                 "every vector, so recall is 100% by construction. Metadata filters run inside the search through an id selector.",
+    advantages=["Exact results: the baseline to judge approximate indexes against", "No server, tiny dependency", "Very fast up to a few hundred thousand vectors"],
+    disadvantages=["Search time grows linearly with the number of vectors", "Whole index lives in memory", "One process: no concurrent writers or replication"],
+    limitations=["Only the flat index is exposed; HNSW and IVF are not", "Filtering scans metadata in Python before searching"],
+    compare_with=["qdrant"]))
 for _id, _n, _why in [
     ("pgvector", "PostgreSQL + pgvector", "Planned (Stage 4); Postgres runs in compose but without the pgvector extension image."),
-    ("chroma", "Chroma", "Planned (Stage 4)."), ("faiss", "FAISS", "Planned (Stage 4)."),
+    ("chroma", "Chroma", "Planned (Stage 4)."),
     ("azure_ai_search", "Azure AI Search", "Planned (Stage 4); needs an Azure AI Search service."),
     ("pinecone", "Pinecone", "Planned (Stage 4); needs an API key."), ("milvus", "Milvus", "Planned (Stage 4)."),
     ("weaviate", "Weaviate", "Planned (Stage 4)."), ("elasticsearch", "Elasticsearch / OpenSearch", "Planned (Stage 4)."),

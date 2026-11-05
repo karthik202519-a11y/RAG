@@ -52,8 +52,17 @@ _p("openpyxl", "XLSX (openpyxl)", "Reads Excel workbooks: one page per sheet, th
 _p("xml_etree", "XML", "Reads XML as 'path/to/element: text' lines.", "Parses with the standard library without resolving entities, then walks elements in order.",
    ["Keeps element paths and attributes", "Entity expansion is not performed"], ["No schema awareness", "Mixed content loses interleaving"], ["xml"], docs=["Structured data"])
 
+_p("pdfplumber", "pdfplumber", "Reads digital PDFs with pdfminer; strong at ruled tables. Comparison lab only.",
+   "Extracts text with pdfminer.six layout analysis and detects tables from ruling lines. Available in the Parser Lab for side-by-side "
+   "comparison; ingestion still uses PyMuPDF.",
+   ["Good table detection on ruled tables", "Pure Python"], ["Slower than PyMuPDF", "No printed-page or section metadata"], ["pdf"],
+   docs=["Digital PDFs with ruled tables"], requires=["pdfplumber"])
+_p("pypdf", "pypdf", "Reads digital PDFs in pure Python. Comparison lab only.",
+   "Extracts the text layer page by page. Has no table detector. Available in the Parser Lab; ingestion still uses PyMuPDF.",
+   ["Pure Python, tiny dependency"], ["No tables", "Reading order can interleave columns"], ["pdf"], docs=["Simple digital PDFs"],
+   requires=["pypdf"])
+
 _NA = {
-    "pdfplumber": ("pdfplumber", "Planned (Stage 5)."),
     "docling": ("Docling (layout-aware)", "Planned (Stage 5); needs the docling package and models."),
     "unstructured": ("Unstructured", "Planned (Stage 5)."),
     "tika": ("Apache Tika", "Planned (Stage 5); needs a Tika server."),

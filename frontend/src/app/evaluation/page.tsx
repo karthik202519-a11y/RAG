@@ -102,6 +102,7 @@ function DatasetView({ id, pid }: { id: string; pid: string }) {
           {showForm ? (
             <div className="space-y-2">
               <RunForm id={id} pid={pid} onStarted={() => { setFormOpen(false); void qc.invalidateQueries({ queryKey: ["eval-runs", id] }); void qc.invalidateQueries({ queryKey: ["eval-ds", id] }); }} disabled={d.questions.length === 0} />
+              <GridForm id={id} pid={pid} onStarted={() => { setFormOpen(false); void qc.invalidateQueries({ queryKey: ["eval-runs", id] }); void qc.invalidateQueries({ queryKey: ["eval-ds", id] }); }} disabled={d.questions.length === 0} />
               {(runs.data?.length ?? 0) > 0 && <Button size="sm" variant="ghost" onClick={() => setFormOpen(false)}>Hide the run form</Button>}
             </div>
           ) : (
@@ -183,11 +184,11 @@ function Questions({ d, pid, onChange }: { d: EvalDatasetDetail; pid: string; on
 function RunForm({ id, pid, onStarted, disabled }: { id: string; pid: string; onStarted: () => void; disabled: boolean }) {
   const indexes = useQuery({ queryKey: ["indexes", pid], queryFn: () => api<IndexInfo[]>(`/projects/${pid}/indexes`) });
   const ready = (indexes.data ?? []).filter((i) => i.status === "ready");
-  const [f, setF] = useState({ index: "", mode: "dense", k: 5, split: "all", transform: "none", rerank: "none", mmr: false, answers: false, label: "" });
+  const [f, setF] = useState({ index: "", mode: "dense", k: 5, split: "all", transform: "none", rerank: "none", mmr: false, answers: false, judge: false, label: "" });
   const index = f.index || ready[0]?.id || "";
   const start = useMutation({
     mutationFn: () => api(`/eval-datasets/${id}/runs`, { method: "POST", json: { index_id: index, mode: f.mode, k: f.k, split: f.split, transform: f.transform,
-      rerank: f.rerank, mmr: f.mmr, with_answers: f.answers, label: f.label } }),
+      rerank: f.rerank, mmr: f.mmr, with_answers: f.answers, judge: f.answers && f.judge, label: f.label } }),
     onSuccess: () => { setF({ ...f, label: "" }); onStarted(); },
   });
   const llm = f.transform !== "none" || f.rerank !== "none" || f.answers;
@@ -205,6 +206,7 @@ function RunForm({ id, pid, onStarted, disabled }: { id: string; pid: string; on
           <div className="flex flex-col justify-end gap-1">
             <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={f.mmr} onChange={(e) => setF({ ...f, mmr: e.target.checked })} /> MMR diversity</label>
             <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={f.answers} onChange={(e) => setF({ ...f, answers: e.target.checked })} /> Also generate answers</label>
+            <label className={clsx("flex items-center gap-2 text-xs", !f.answers && "opacity-50")} title="One extra model call per answer"><input type="checkbox" disabled={!f.answers} checked={f.answers && f.judge} onChange={(e) => setF({ ...f, judge: e.target.checked })} /> Judge faithfulness</label>
           </div>
           <div className="md:col-span-4">
             {llm && <p className="mb-2 text-xs text-warn">These options call the chat model for every question and spend tokens.</p>}
@@ -212,6 +214,52 @@ function RunForm({ id, pid, onStarted, disabled }: { id: string; pid: string; on
             <Button type="submit" variant="primary" loading={start.isPending} disabled={disabled}><FlaskConical className="size-4" aria-hidden /> Start run</Button>
             {disabled && <span className="ml-3 text-xs text-dim">Add questions first.</span>}
           </div>
+        </form>)}
+    </Card>
+  );
+}
+
+function toggleIn<T>(list: T[], v: T): T[] {
+  return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
+}
+
+/** Every combination of the ticked indexes, modes, k values and rerankers, run on the same questions. */
+function GridForm({ id, pid, onStarted, disabled }: { id: string; pid: string; onStarted: () => void; disabled: boolean }) {
+  const indexes = useQuery({ queryKey: ["indexes", pid], queryFn: () => api<IndexInfo[]>(`/projects/${pid}/indexes`) });
+  const ready = (indexes.data ?? []).filter((i) => i.status === "ready");
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const [modes, setModes] = useState<string[]>(["dense", "bm25", "hybrid"]);
+  const [ks, setKs] = useState<number[]>([3, 5]);
+  const [rerank, setRerank] = useState<string[]>(["none"]);
+  const [split, setSplit] = useState("all");
+  const idxs = picked ?? ready.map((i) => i.id);
+  const total = idxs.length * modes.length * ks.length * rerank.length;
+  const start = useMutation({
+    mutationFn: () => api(`/eval-datasets/${id}/grid`, { method: "POST", json: { index_ids: idxs, modes, ks, rerank, split } }),
+    onSuccess: onStarted,
+  });
+  const box = "flex items-center gap-1.5 text-sm";
+  return (
+    <Card title="Compare many configurations at once">
+      {ready.length === 0 ? <p className="text-sm text-dim">Build an index first.</p> : (
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); start.mutate(); }}>
+          <p className="text-xs text-dim">Runs every combination of what you tick on the same questions, so differences come from the configuration and nothing else. Up to 24 runs.</p>
+          <fieldset><legend className="mb-1 text-xs font-medium text-dim">Indexes</legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">{ready.map((i) => <label key={i.id} className={box}><input type="checkbox" checked={idxs.includes(i.id)} onChange={() => setPicked(toggleIn(idxs, i.id))} />{i.name}</label>)}</div></fieldset>
+          <div className="flex flex-wrap gap-x-8 gap-y-2">
+            <fieldset><legend className="mb-1 text-xs font-medium text-dim">Retrieval</legend>
+              <div className="flex gap-3">{["dense", "bm25", "hybrid"].map((m) => <label key={m} className={box}><input type="checkbox" checked={modes.includes(m)} onChange={() => setModes(toggleIn(modes, m))} />{m}</label>)}</div></fieldset>
+            <fieldset><legend className="mb-1 text-xs font-medium text-dim">Top k</legend>
+              <div className="flex gap-3">{[1, 3, 5, 10].map((k) => <label key={k} className={box}><input type="checkbox" checked={ks.includes(k)} onChange={() => setKs(toggleIn(ks, k))} />{k}</label>)}</div></fieldset>
+            <fieldset><legend className="mb-1 text-xs font-medium text-dim">Reranking</legend>
+              <div className="flex gap-3">{[["none", "none"], ["llm", "LLM (spends tokens)"]].map(([v, l]) => <label key={v} className={box}><input type="checkbox" checked={rerank.includes(v)} onChange={() => setRerank(toggleIn(rerank, v))} />{l}</label>)}</div></fieldset>
+            <Field label="Split"><Select value={split} onChange={(e) => setSplit(e.target.value)} aria-label="Grid split"><option value="all">All</option><option value="train">Train</option><option value="validation">Validation</option><option value="test">Test</option></Select></Field>
+          </div>
+          <ErrorBox error={start.error} />
+          <Button type="submit" loading={start.isPending} disabled={disabled || total < 1 || total > 24}>
+            <FlaskConical className="size-4" aria-hidden /> Run {total} configuration{total === 1 ? "" : "s"}
+          </Button>
+          {total > 24 && <span className="ml-3 text-xs text-bad">Too many ({total}); the limit is 24.</span>}
         </form>)}
     </Card>
   );
@@ -287,7 +335,10 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <div><h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-dim">Generated answers ({m.answers.n})</h3>
               <ul className="text-sm"><li>Correct answer-or-refuse decisions: {pct(m.answers.abstention_correct.rate)} (n={m.answers.abstention_correct.n})</li>
                 <li>Citations that resolve: {pct(m.answers.citations_resolve.rate)} (n={m.answers.citations_resolve.n})</li><li>Expected keywords present: {pct(m.answers.keyword_hit.rate)} (n={m.answers.keyword_hit.n})</li></ul>
-              <p className="mt-1 text-xs text-dim">Not available: {m.answers.not_available.join("; ")}.</p></div>)}
+              {m.answers.faithfulness && <p className="mt-1 text-sm">Faithfulness (claims supported by their passages, judged by a model): {pct(m.answers.faithfulness.mean)} over {m.answers.faithfulness.n} answers
+                {m.answers.faithfulness.contradicted_claims > 0 && `, ${m.answers.faithfulness.contradicted_claims} contradicted claim${m.answers.faithfulness.contradicted_claims === 1 ? "" : "s"}`}
+                {m.answers.relevance && `; answers the question: ${m.answers.relevance.yes} yes, ${m.answers.relevance.partial} partial, ${m.answers.relevance.no} no`}</p>}
+              {m.answers.not_available.length > 0 && <p className="mt-1 text-xs text-dim">Not available: {m.answers.not_available.join("; ")}.</p>}</div>)}
           <div>
             <div className="mb-1 flex items-center justify-between"><h3 className="text-xs font-semibold uppercase tracking-wide text-dim">Per question</h3>
               <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={onlyMisses} onChange={(e) => setOnlyMisses(e.target.checked)} /> only misses</label></div>

@@ -16,7 +16,7 @@ from .. import generation as gen_pkg
 from ..embeddings import embed_texts
 from ..generation import service as gen
 from ..models import Index
-from ..vectorstores import qdrant_store
+from ..vectorstores import store_for
 from . import service
 from .expand import expand_results
 
@@ -101,8 +101,7 @@ def rerank_llm(question: str, hits: list[dict], model: str | None) -> tuple[list
 
 
 def _fetch_vectors(index: Index, chunk_ids: list[str]) -> dict[str, np.ndarray]:
-    pts = qdrant_store.client().retrieve(index.collection, ids=[str(uuid.UUID(c)) for c in chunk_ids], with_vectors=True)
-    return {uuid.UUID(str(p.id)).hex: np.asarray(p.vector, dtype=np.float32) for p in pts}
+    return store_for(index.store).get_vectors(index.collection, chunk_ids)
 
 
 def mmr(index: Index, hits: list[dict], qvec: np.ndarray, top_k: int, lam: float) -> list[dict]:

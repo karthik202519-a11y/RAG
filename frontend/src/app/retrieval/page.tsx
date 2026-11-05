@@ -250,7 +250,7 @@ export default function RetrievalLab() {
           {!res && !cmp && !ans && !run.isPending && !compare.isPending && !ask.isPending && <Empty title="Nothing searched yet">Type a question and press <strong>Search</strong>, <strong>Compare modes</strong> to see all three side by side, or <strong>Ask with citations</strong> for a grounded answer.</Empty>}
           {(run.isPending || compare.isPending) && <Spinner label="Searching" />}
           {ask.isPending && <Spinner label="Retrieving passages and asking the model" />}
-          {ans && <AnswerPanel r={ans} onOpen={setPicked} />}
+          {ans && <AnswerPanel r={ans} onOpen={setPicked} indexId={indexId} />}
           {ans && ans.context_passages.length > 0 && (
             <Card title={`Passages sent to the model (${ans.context_passages.length})`} pad={false}>
               <ol className="divide-y divide-border">

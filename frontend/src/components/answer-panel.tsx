@@ -2,9 +2,10 @@
 
 import clsx from "clsx";
 import { AlertTriangle, CheckCircle2, ShieldQuestion } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
-import type { AnswerResponse } from "@/lib/api";
-import { Badge, Button, Card } from "./ui";
+import { api, type AnswerResponse } from "@/lib/api";
+import { Badge, Button, Card, ErrorBox } from "./ui";
 import type { SourceRef } from "./source-panel";
 
 /** Render the answer with each [n] marker as a button that opens that passage in its source. */
@@ -28,7 +29,42 @@ function AnswerText({ r, onOpen }: { r: AnswerResponse; onOpen: (s: SourceRef) =
   );
 }
 
-export function AnswerPanel({ r, onOpen }: { r: AnswerResponse; onOpen: (s: SourceRef) => void }) {
+type Judged = { claims: { claim: string; verdict: "supported" | "contradicted" | "unsupported"; passage: number | null; quote: string | null }[];
+  faithfulness: number | null; supported: number; claims_total: number; contradicted: number; relevance: string | null; judge_model: string; note: string };
+const VERDICT_TONE = { supported: "good", contradicted: "bad", unsupported: "warn" } as const;
+
+function Judge({ r, indexId }: { r: AnswerResponse; indexId: string }) {
+  const judge = useMutation({ mutationFn: () => api<Judged>(`/indexes/${indexId}/judge`, { method: "POST", json: {
+    question: r.question, answer: r.answer, passages: r.context_passages.map((p) => ({ n: p.n, text: p.text })) } }) });
+  const j = judge.data;
+  return (
+    <div className="mt-4 border-t border-border pt-3 text-sm">
+      <Button size="sm" onClick={() => judge.mutate()} disabled={judge.isPending}>{judge.isPending ? "Checking claims…" : j ? "Check again" : "Check claims against the passages"}</Button>
+      <ErrorBox error={judge.error} />
+      {j && (
+        <div className="mt-3 space-y-2">
+          <p>
+            <span className="font-semibold">{j.supported} of {j.claims_total}</span> claims supported
+            {j.faithfulness != null && <> ({Math.round(j.faithfulness * 100)}%)</>}
+            {j.contradicted > 0 && <span className="text-bad"> · {j.contradicted} contradicted</span>}
+            {j.relevance && <> · answers the question: {j.relevance}</>}
+          </p>
+          <ul className="space-y-1.5">
+            {j.claims.map((c, i) => (
+              <li key={i} className="flex gap-2">
+                <Badge tone={VERDICT_TONE[c.verdict]}>{c.verdict}</Badge>
+                <span>{c.claim}{c.quote && <span className="block text-xs text-dim">[{c.passage}] “{c.quote}”</span>}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-dim">{j.note} Judge: {j.judge_model}.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function AnswerPanel({ r, onOpen, indexId }: { r: AnswerResponse; onOpen: (s: SourceRef) => void; indexId?: string }) {
   const [showPrompt, setShowPrompt] = useState(false);
   const c = r.citations;
   return (
@@ -55,6 +91,8 @@ export function AnswerPanel({ r, onOpen }: { r: AnswerResponse; onOpen: (s: Sour
           <p className="text-xs text-dim">A resolving citation proves the number exists, not that the passage supports the claim. Read the source.</p>
         </div>
       )}
+
+      {indexId && r.prompt && !r.abstained && r.answer && <Judge key={r.answer} r={r} indexId={indexId} />}
 
       {r.usage && (
         <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-4">

@@ -15,7 +15,7 @@ from . import __version__, jobs
 from . import db as dbmod
 from .config import settings
 from .registry import registry
-from .routers import auth, catalog, chunking_api, documents, evaluation, explorer, indexes, jobs_api, projects
+from .routers import auth, catalog, chunking_api, documents, evaluation, explorer, graph_api, indexes, jobs_api, parser_lab, projects, settings_api, traces
 
 log = logging.getLogger("studio")
 
@@ -62,7 +62,7 @@ app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.co
 # Large JSON (a chunk preview is ~700 KB) compresses about 6x. Event streams are excluded by Starlette's defaults.
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 for r in (auth.router, projects.router, documents.router, jobs_api.router, catalog.router, chunking_api.router,
-          indexes.router, explorer.router, evaluation.router):
+          indexes.router, explorer.router, evaluation.router, parser_lab.router, traces.router, settings_api.router, graph_api.router):
     app.include_router(r)
 
 

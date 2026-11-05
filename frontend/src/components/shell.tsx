@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import {
-  BookOpen, ClipboardCheck, Database, FileStack, FolderKanban, LayoutDashboard, LogOut, Menu, Moon, Scissors, ScatterChart, Search, Sun, X,
+  BookOpen, ClipboardCheck, Database, FileStack, FolderKanban, LayoutDashboard, LogOut, Menu, Moon, Activity, Network, Settings, ScanText, Scissors, ScatterChart, Search, Sun, X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -21,13 +21,18 @@ const GROUPS = [
     { href: "/projects", label: "Projects & Collections", icon: FolderKanban } ] },
   { label: "Build", items: [
     { href: "/ingestion", label: "Document Ingestion", icon: FileStack },
+    { href: "/parsing", label: "Parser Lab", icon: ScanText },
     { href: "/chunking", label: "Chunking Playground", icon: Scissors },
     { href: "/indexes", label: "Indexes & Embeddings", icon: Database } ] },
   { label: "Explore", items: [
     { href: "/retrieval", label: "Retrieval Lab", icon: Search },
-    { href: "/embeddings", label: "Embedding Explorer", icon: ScatterChart } ] },
-  { label: "Measure", items: [{ href: "/evaluation", label: "Evaluation Center", icon: ClipboardCheck }] },
+    { href: "/embeddings", label: "Embedding Explorer", icon: ScatterChart },
+    { href: "/graph", label: "GraphRAG Explorer", icon: Network } ] },
+  { label: "Measure", items: [
+    { href: "/evaluation", label: "Evaluation Center", icon: ClipboardCheck },
+    { href: "/traces", label: "Traces", icon: Activity } ] },
   { label: "Learn", items: [{ href: "/catalog", label: "Method Catalog", icon: BookOpen }] },
+  { label: "System", items: [{ href: "/settings", label: "Settings", icon: Settings }] },
 ];
 
 function initialTheme(): "light" | "dark" {

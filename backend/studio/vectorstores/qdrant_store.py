@@ -93,3 +93,9 @@ def delete_collection(name: str) -> None:
 def sample_vectors(name: str, limit: int = 1) -> list[list[float]]:
     pts, _ = client().scroll(name, limit=limit, with_vectors=True, with_payload=False)
     return [list(map(float, p.vector)) for p in pts]  # type: ignore[arg-type]
+
+
+def get_vectors(name: str, ids: list[str]) -> dict[str, np.ndarray]:
+    """Stored vectors by chunk id (hex)."""
+    pts = client().retrieve(name, ids=[str(uuid.UUID(i)) for i in ids], with_vectors=True)
+    return {uuid.UUID(str(p.id)).hex: np.asarray(p.vector, dtype=np.float32) for p in pts}

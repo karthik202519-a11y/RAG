@@ -16,7 +16,7 @@ from ..embeddings import PROVIDERS, ProviderError, embed_texts, get_provider
 from ..models import AuditEvent, Document, DocumentVersion, Index, IndexChunk, Job, RetrievalRun, User
 from ..retrieval import DimensionMismatch, pipeline
 from ..security import current_user, get_project
-from ..vectorstores import qdrant_store
+from ..vectorstores import faiss_store, qdrant_store, store_for
 
 router = APIRouter(tags=["indexes"])
 
@@ -31,7 +31,8 @@ def list_providers(user: User = Depends(current_user)) -> dict:
         emb.append({"id": p.id, "model": p.model or None, "available": ok, "detail": why,
                     "semantic": p.id != "local_hash"})
     return {"embedding": emb,
-            "vector_stores": [{"id": "qdrant", "available": True, "mode": qdrant_store.mode()}],
+            "vector_stores": [{"id": "qdrant", "available": True, "mode": qdrant_store.mode()},
+                              {"id": "faiss", "available": True, "mode": faiss_store.mode()}],
             "generation": {"configured": generation.generation_status()[0], "detail": generation.generation_status()[1],
                            "default_model": settings.azure_chat_deployment or None, "models": generation.configured_models()},
             "vision": {"configured": generation.vision_status()[0], "detail": generation.vision_status()[1],
@@ -68,6 +69,9 @@ class IndexIn(BaseModel):
     provider: str
     document_ids: list[str] | None = Field(None, description="Default: every ready document in the project")
     section_prefix: bool = True
+    store: Literal["qdrant", "faiss"] = "qdrant"
+    contextual: bool = Field(False, description="A chat model writes a situating sentence per text chunk, embedded with it (one call per chunk)")
+    contextual_model: str | None = Field(None, max_length=100)
 
 
 def index_out(db: Session, i: Index, detail: bool = False) -> dict:
@@ -107,6 +111,10 @@ def create_index(project_id: str, body: IndexIn, user: User = Depends(current_us
         params = validate_params(body.chunking.method, body.chunking.params)
     except ChunkingError as e:
         raise HTTPException(422, str(e)) from None
+    if body.contextual:
+        gok, gwhy = generation.generation_status()
+        if not gok:
+            raise HTTPException(409, f"Contextual embedding needs the chat model. {gwhy}")
 
     stmt = select(Document).where(Document.project_id == project.id)
     if body.document_ids:
@@ -119,10 +127,11 @@ def create_index(project_id: str, body: IndexIn, user: User = Depends(current_us
     if not version_ids:
         raise HTTPException(422, "No ready documents to index. Upload and parse a document first.")
 
-    idx = Index(project_id=project.id, name=body.name.strip(), provider=provider.id, model=provider.model,
+    idx = Index(project_id=project.id, name=body.name.strip(), provider=provider.id, model=provider.model, store=body.store,
                 collection="pending", config={"chunking": {"method": body.chunking.method, "params": params},
                                               "version_ids": version_ids, "section_prefix": body.section_prefix,
-                                              "embedding": {"provider": provider.id, "model": provider.model}})
+                                              "embedding": {"provider": provider.id, "model": provider.model},
+                                              **({"contextual": {"model": body.contextual_model or settings.azure_chat_deployment}} if body.contextual else {})})
     db.add(idx)
     db.flush()
     idx.collection = f"idx_{idx.id}"  # a unique namespace per index: nothing is ever overwritten
@@ -144,7 +153,7 @@ def read_index(index_id: str, user: User = Depends(current_user), db: Session = 
     i = load_index(db, user, index_id)
     out = index_out(db, i, detail=True)
     if i.status == "ready":
-        out["stored_vectors"] = qdrant_store.count(i.collection)
+        out["stored_vectors"] = store_for(i.store).count(i.collection)
         by_doc = db.execute(select(IndexChunk.filename, func.count()).where(IndexChunk.index_id == i.id)
                             .group_by(IndexChunk.filename)).all()
         out["chunks_by_document"] = {f: n for f, n in by_doc}
@@ -154,7 +163,7 @@ def read_index(index_id: str, user: User = Depends(current_user), db: Session = 
 @router.delete("/indexes/{index_id}", status_code=204)
 def delete_index(index_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> None:
     i = load_index(db, user, index_id, "editor")
-    qdrant_store.delete_collection(i.collection)
+    store_for(i.store).delete_collection(i.collection)
     retrieval.drop_bm25(i.id)
     db.query(Job).filter(Job.subject_id == i.id).delete()
     db.add(AuditEvent(user_id=user.id, action="index.delete", target=i.id, detail={"name": i.name}))
@@ -173,7 +182,7 @@ def browse_chunks(index_id: str, limit: int = Query(20, ge=1, le=200), offset: i
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(stmt.order_by(IndexChunk.filename, IndexChunk.chunk_index).offset(offset).limit(limit)).all()
     return {"total": total, "items": [{"id": r.id, "filename": r.filename, "chunk_index": r.chunk_index, "type": r.ctype,
-                                       "tokens": r.tokens, "pages": r.pages, "section": r.section, "text": r.text}
+                                       "tokens": r.tokens, "pages": r.pages, "section": r.section, "text": r.text, "context": r.context}
                                       for r in rows]}
 
 
@@ -187,10 +196,10 @@ def chunk_vector(index_id: str, chunk_id: str, n: int = Query(16, ge=1, le=64), 
     row = db.get(IndexChunk, chunk_id)
     if row is None or row.index_id != i.id:
         raise HTTPException(404, "Chunk not found")
-    pts = qdrant_store.client().retrieve(i.collection, ids=[str(uuid.UUID(chunk_id))], with_vectors=True)
-    if not pts:
+    got = store_for(i.store).get_vectors(i.collection, [chunk_id])
+    if chunk_id not in got:
         raise HTTPException(404, "Vector not found")
-    v = np.asarray(pts[0].vector, dtype=np.float32)
+    v = got[chunk_id]
     return {"chunk_id": chunk_id, "dimension": int(len(v)), "norm": round(float(np.linalg.norm(v)), 6),
             "min": round(float(v.min()), 5), "max": round(float(v.max()), 5), "first_values": [round(float(x), 5) for x in v[:n]]}
 
@@ -299,12 +308,21 @@ def answer_question(index_id: str, body: AnswerIn, user: User = Depends(current_
     """Retrieve, build a grounded prompt, ask the chat model, and verify its citations against the passages sent."""
     i = load_index(db, user, index_id)
     try:
-        return generation.answer(db, i, body.question, model=body.model, mode=body.mode, top_k=body.top_k, strict=body.strict,
+        out = generation.answer(db, i, body.question, model=body.model, mode=body.mode, top_k=body.top_k, strict=body.strict,
                                  temperature=body.temperature, max_output_tokens=body.max_output_tokens,
                                  context_budget=body.context_budget, min_score=body.min_score,
                                  price_in_per_million=body.price_in_per_million, price_out_per_million=body.price_out_per_million,
                                  system_prompt=body.system_prompt, document_ids=body.document_ids,
                                  expand=body.expand, neighbors=body.neighbors)
+        usage = out.get("usage") or {}
+        db.add(RetrievalRun(index_id=i.id, user_id=user.id, query=body.question, mode=f"answer:{body.mode}",
+                            params={"model": out.get("model"), "abstained": out.get("abstained"), "top_k": body.top_k,
+                                    "prompt_tokens": usage.get("prompt_tokens"), "completion_tokens": usage.get("completion_tokens"),
+                                    "cost_usd": usage.get("estimated_cost_usd")},
+                            result_ids=[p["chunk_id"] for p in out.get("context_passages", [])],
+                            timings_ms=out.get("timings_ms", {})))
+        db.commit()
+        return out
     except generation.GenerationNotConfigured as e:
         raise HTTPException(409, f"Answer generation is not configured. {e}") from None
     except DimensionMismatch as e:
@@ -313,6 +331,29 @@ def answer_question(index_id: str, body: AnswerIn, user: User = Depends(current_
         raise HTTPException(502, str(e)) from None
     except ValueError as e:
         raise HTTPException(409, str(e)) from None
+
+
+class JudgeIn(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    answer: str = Field(min_length=1, max_length=20000)
+    passages: list[dict] = Field(min_length=1, max_length=30, description="context_passages from the answer response")
+    model: str | None = Field(None, max_length=100)
+
+
+@router.post("/indexes/{index_id}/judge")
+def judge_answer_endpoint(index_id: str, body: JudgeIn, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Check an answer's claims against the passages it was given. Needs the chat deployment."""
+    load_index(db, user, index_id)
+    from ..generation.judge import judge_answer
+    passages = [{"n": p.get("n"), "text": str(p.get("text", ""))} for p in body.passages if isinstance(p.get("n"), int)]
+    if not passages:
+        raise HTTPException(422, "Each passage needs an integer 'n' and 'text'")
+    try:
+        return judge_answer(body.question, body.answer, passages, body.model)
+    except generation.GenerationNotConfigured as e:
+        raise HTTPException(409, f"The judge is not configured. {e}") from None
+    except generation.GenerationError as e:
+        raise HTTPException(502, str(e)) from None
 
 
 @router.get("/indexes/{index_id}/runs")

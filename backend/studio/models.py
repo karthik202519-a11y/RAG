@@ -174,6 +174,7 @@ class IndexChunk(Base):
     printed_pages: Mapped[list] = mapped_column(JSON)
     section: Mapped[str | None] = mapped_column(Text)
     parent_id: Mapped[str | None] = mapped_column(String(32), index=True)  # set by the parent-child chunker
+    context: Mapped[str | None] = mapped_column(Text)  # model-written situating sentence, embedded with the chunk (contextual indexes)
 
 
 class IndexParent(Base):
@@ -244,6 +245,42 @@ class EvalRun(Base):
     per_question: Mapped[list | None] = mapped_column(JSON)
     seconds: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GraphBuild(Base):
+    """State of the knowledge graph extracted from one index's chunks."""
+    __tablename__ = "graph_builds"
+    index_id: Mapped[str] = mapped_column(ForeignKey("indexes.id", ondelete="CASCADE"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|running|ready|failed
+    model: Mapped[str] = mapped_column(String(100), default="")
+    chunks_requested: Mapped[int] = mapped_column(Integer, default=0)
+    chunks_processed: Mapped[int] = mapped_column(Integer, default=0)
+    chunks_failed: Mapped[int] = mapped_column(Integer, default=0)
+    relations_dropped: Mapped[int] = mapped_column(Integer, default=0)  # relations whose entities were not in the chunk text
+    tokens: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text)
+    seconds: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GraphEntity(Base):
+    __tablename__ = "graph_entities"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    index_id: Mapped[str] = mapped_column(ForeignKey("indexes.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(300))
+    norm: Mapped[str] = mapped_column(String(300), index=True)
+    etype: Mapped[str] = mapped_column(String(60), default="")
+    mentions: Mapped[int] = mapped_column(Integer, default=1)  # chunks the entity was found in
+
+
+class GraphEdge(Base):
+    __tablename__ = "graph_edges"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    index_id: Mapped[str] = mapped_column(ForeignKey("indexes.id", ondelete="CASCADE"), index=True)
+    src_id: Mapped[str] = mapped_column(ForeignKey("graph_entities.id", ondelete="CASCADE"), index=True)
+    dst_id: Mapped[str] = mapped_column(ForeignKey("graph_entities.id", ondelete="CASCADE"), index=True)
+    relation: Mapped[str] = mapped_column(String(200))
+    chunk_id: Mapped[str] = mapped_column(String(32), index=True)  # provenance: the chunk the relation was read from
 
 
 class AuditEvent(Base):

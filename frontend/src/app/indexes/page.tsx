@@ -29,6 +29,8 @@ export default function IndexesPage() {
   const [params, setParams] = useState<Record<string, unknown> | null>(null);
   const [excluded, setExcluded] = useState<string[]>([]);
   const [prefix, setPrefix] = useState(true);
+  const [store, setStore] = useState("qdrant");
+  const [contextual, setContextual] = useState(false);
 
   const m = methods.find((x) => x.id === method);
   const p = params ?? (m ? defaults(m) : {});
@@ -42,7 +44,7 @@ export default function IndexesPage() {
   const create = useMutation({
     mutationFn: () => api<IndexInfo>(`/projects/${pid}/indexes`, {
       method: "POST",
-      json: { name: name || `${m?.name} · ${chosen?.model}`, provider, section_prefix: prefix,
+      json: { name: name || `${m?.name} · ${chosen?.model}`, provider, store, contextual, section_prefix: prefix,
         chunking: { method, params: p }, document_ids: excluded.length ? selDocs.map((d) => d.id) : null },
     }),
     onSuccess: () => { setName(""); void qc.invalidateQueries({ queryKey: ["indexes", pid] }); },
@@ -90,6 +92,11 @@ export default function IndexesPage() {
                     {providers.data?.embedding.map((e) => <option key={e.id} value={e.id} disabled={!e.available}>{e.id}{e.model ? ` (${e.model})` : ""}{e.available ? "" : " - not configured"}</option>)}
                   </Select>
                 </Field>
+                <Field label="Vector store" hint={store === "faiss" ? "Exact brute-force search; no server, saved to disk." : "Approximate (HNSW) search with payload filters."}>
+                  <Select value={store} onChange={(e) => setStore(e.target.value)} aria-label="Vector store">
+                    {(providers.data?.vector_stores ?? [{ id: "qdrant", available: true, mode: "" }]).map((v) => <option key={v.id} value={v.id} disabled={!v.available}>{v.id}{v.mode ? ` (${v.mode})` : ""}</option>)}
+                  </Select>
+                </Field>
                 <Field label="Chunking method">
                   <Select value={method} onChange={(e) => { setMethod(e.target.value); setParams(null); }} aria-label="Chunking method">
                     {methods.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
@@ -99,6 +106,10 @@ export default function IndexesPage() {
                 <label className="flex items-start gap-2 text-sm">
                   <input type="checkbox" className="mt-1" checked={prefix} onChange={(e) => setPrefix(e.target.checked)} />
                   <span>Prefix text chunks with their section title when embedding<span className="block text-xs text-dim">Cheap context: the model also sees which section the text came from.</span></span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-1" checked={contextual} onChange={(e) => setContextual(e.target.checked)} />
+                  <span>Contextual embedding<span className="block text-xs text-dim">A chat model writes one sentence placing each text chunk in its document; it is embedded with the chunk and stored so you can read it. Costs one chat call per chunk.</span></span>
                 </label>
                 <fieldset>
                   <legend className="mb-1 text-xs font-medium text-dim">Documents ({selDocs.length} of {docs.data?.items.length})</legend>
@@ -139,7 +150,7 @@ function IndexCard({ i, onDelete }: { i: IndexInfo; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   const rows: [string, string][] = [
     ["Embedding model", `${i.provider} / ${i.model}`],
-    ["Vector size", i.dimension ? `${i.dimension} dimensions · ${i.metric}` : "n/a"],
+    ["Vector size", i.dimension ? `${i.dimension} dimensions · ${i.metric} · ${i.store}` : "n/a"],
     ["Chunks / vectors", i.chunk_count != null ? `${fmt.n(i.chunk_count)}` : "n/a"],
     ["Chunker", `${i.chunking.method} ${Object.entries(i.chunking.params).filter(([k]) => ["size", "overlap", "stride"].includes(k)).map(([k, v]) => `${k}=${v}`).join(" ")}`],
     ["Tokens embedded", fmt.n(i.tokens_embedded)],

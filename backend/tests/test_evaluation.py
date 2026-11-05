@@ -222,3 +222,18 @@ def test_run_requires_a_ready_index_and_questions(client, auth, project, idx):
     seed_questions(client, auth, ds)
     assert client.post(f"/eval-datasets/{ds['id']}/runs", headers=auth, json={"index_id": "0" * 32}).status_code == 404
     assert client.post(f"/eval-datasets/{ds['id']}/runs", headers=auth, json={"index_id": idx["id"], "k": 0}).status_code == 422
+
+
+def test_grid_creates_one_run_per_combination_and_caps_size(client, auth, project, idx):
+    ds = dataset(client, auth, project)
+    seed_questions(client, auth, ds)
+    g = client.post(f"/eval-datasets/{ds['id']}/grid", headers=auth,
+                    json={"index_ids": [idx["id"]], "modes": ["dense", "bm25"], "ks": [3, 5]})
+    assert g.status_code == 201, g.text
+    assert g.json()["count"] == 4
+    labels = {r["label"] for r in g.json()["runs"]}
+    assert len(labels) == 4  # each combination is distinguishable
+    big = client.post(f"/eval-datasets/{ds['id']}/grid", headers=auth,  # 2 x 3 x 4 x 2 = 48 combinations: refused before any run starts
+                      json={"index_ids": ["a", "b"], "modes": ["dense", "bm25", "hybrid"], "ks": [1, 3, 5, 10], "rerank": ["none", "llm"]})
+    assert big.status_code == 422 and "limit is 24" in big.json()["detail"]
+    assert client.post(f"/eval-datasets/{ds['id']}/grid", headers=auth, json={"index_ids": ["nope"]}).status_code == 404

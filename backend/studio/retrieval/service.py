@@ -17,7 +17,7 @@ from ..embeddings import embed_texts
 from ..embeddings.providers import ProviderError
 from ..models import Index, IndexChunk
 from .expand import expand_results
-from ..vectorstores import qdrant_store
+from ..vectorstores import store_for
 
 TOKEN_RE = re.compile(r"[a-z0-9]+(?:[.\-][a-z0-9]+)*")
 MODES = ("dense", "bm25", "hybrid")
@@ -109,7 +109,7 @@ def search(db: Session, index: Index, query: str, mode: str = "dense", top_k: in
                                    "norm": round(float(np.linalg.norm(qv)), 6), "tokens_billed": emb.tokens_billed,
                                    "cached": emb.cache_hits > 0, "first_values": [round(float(x), 5) for x in qv[:8]]}
         t0 = time.perf_counter()
-        dense = qdrant_store.search(index.collection, qv, cand, document_ids, types)
+        dense = store_for(index.store).search(index.collection, qv, cand, document_ids, types)
         timings["vector_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
     kw: list = []
