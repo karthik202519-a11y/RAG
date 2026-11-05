@@ -54,7 +54,7 @@ export default function TracesPage() {
   const scale = Math.max(1, ...(d?.items ?? []).map((t) => t.total_ms));
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full min-w-0">
       <PageHeader title="Traces" subtitle="Every search, answer and background job in this project, with the steps the code timed while it ran. Times are measured, not estimated. Refreshes every 10 seconds." />
       {d && (
         <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">

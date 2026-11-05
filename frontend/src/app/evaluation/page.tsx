@@ -39,7 +39,7 @@ export default function EvaluationCenter() {
   if (!project) return <Empty title="No project selected"><Link className="text-accent underline" href="/projects">Create a project first</Link></Empty>;
 
   return (
-    <div className="mx-auto max-w-[1500px]">
+    <div className="w-full min-w-0">
       <PageHeader title="Evaluation Center"
         subtitle="Label questions with where the answer lives, run them against an index, and compare configurations on the same questions. Metrics that need evidence you have not provided show 'not available', never zero." />
       <div className="grid gap-5 xl:grid-cols-[18rem_minmax(0,1fr)]">
@@ -228,7 +228,7 @@ function GridForm({ id, pid, onStarted, disabled }: { id: string; pid: string; o
   const indexes = useQuery({ queryKey: ["indexes", pid], queryFn: () => api<IndexInfo[]>(`/projects/${pid}/indexes`) });
   const ready = (indexes.data ?? []).filter((i) => i.status === "ready");
   const [picked, setPicked] = useState<string[] | null>(null);
-  const [modes, setModes] = useState<string[]>(["dense", "bm25", "hybrid"]);
+  const [modes, setModes] = useState<string[]>(["dense", "bm25", "hybrid", "tfidf", "graph", "graph_hybrid"]);
   const [ks, setKs] = useState<number[]>([3, 5]);
   const [rerank, setRerank] = useState<string[]>(["none"]);
   const [split, setSplit] = useState("all");
@@ -248,7 +248,7 @@ function GridForm({ id, pid, onStarted, disabled }: { id: string; pid: string; o
             <div className="flex flex-wrap gap-x-4 gap-y-1">{ready.map((i) => <label key={i.id} className={box}><input type="checkbox" checked={idxs.includes(i.id)} onChange={() => setPicked(toggleIn(idxs, i.id))} />{i.name}</label>)}</div></fieldset>
           <div className="flex flex-wrap gap-x-8 gap-y-2">
             <fieldset><legend className="mb-1 text-xs font-medium text-dim">Retrieval</legend>
-              <div className="flex gap-3">{["dense", "bm25", "hybrid"].map((m) => <label key={m} className={box}><input type="checkbox" checked={modes.includes(m)} onChange={() => setModes(toggleIn(modes, m))} />{m}</label>)}</div></fieldset>
+              <div className="flex gap-3">{["dense", "bm25", "hybrid", "tfidf", "graph", "graph_hybrid"].map((m) => <label key={m} className={box}><input type="checkbox" checked={modes.includes(m)} onChange={() => setModes(toggleIn(modes, m))} />{m}</label>)}</div></fieldset>
             <fieldset><legend className="mb-1 text-xs font-medium text-dim">Top k</legend>
               <div className="flex gap-3">{[1, 3, 5, 10].map((k) => <label key={k} className={box}><input type="checkbox" checked={ks.includes(k)} onChange={() => setKs(toggleIn(ks, k))} />{k}</label>)}</div></fieldset>
             <fieldset><legend className="mb-1 text-xs font-medium text-dim">Reranking</legend>

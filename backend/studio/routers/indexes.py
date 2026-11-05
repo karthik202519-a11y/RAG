@@ -30,10 +30,17 @@ def list_providers(user: User = Depends(current_user)) -> dict:
         ok, why = p.status()
         emb.append({"id": p.id, "model": p.model or None, "available": ok, "detail": why,
                     "semantic": p.id != "local_hash"})
+    models = generation.configured_models()
+    default = generation.default_model()
+    gen_ok, gen_detail = generation.status_for(default)
+    stores = []
+    for name, store in STORES.items():
+        ok, detail = store.status()
+        stores.append({"id": name, "available": ok, "mode": store.mode(), "detail": detail})
     return {"embedding": emb,
-            "vector_stores": [{"id": k, "available": m.status()[0], "mode": m.mode(), "detail": m.status()[1]} for k, m in STORES.items()],
-            "generation": {"configured": generation.generation_status()[0], "detail": generation.generation_status()[1],
-                           "default_model": settings.azure_chat_deployment or None, "models": generation.configured_models()},
+            "vector_stores": stores,
+            "generation": {"configured": gen_ok, "detail": gen_detail,
+                           "default_model": default or None, "models": models},
             "vision": {"configured": generation.vision_status()[0], "detail": generation.vision_status()[1],
                        "model": settings.azure_vision_deployment or None}}
 
@@ -110,8 +117,11 @@ def create_index(project_id: str, body: IndexIn, user: User = Depends(current_us
         params = validate_params(body.chunking.method, body.chunking.params)
     except ChunkingError as e:
         raise HTTPException(422, str(e)) from None
+    store_ok, store_detail = store_for(body.store).status()
+    if not store_ok:
+        raise HTTPException(409, f"Vector store is unavailable. {store_detail}")
     if body.contextual:
-        gok, gwhy = generation.generation_status()
+        gok, gwhy = generation.status_for(body.contextual_model or generation.default_model())
         if not gok:
             raise HTTPException(409, f"Contextual embedding needs the chat model. {gwhy}")
 
@@ -130,7 +140,7 @@ def create_index(project_id: str, body: IndexIn, user: User = Depends(current_us
                 collection="pending", config={"chunking": {"method": body.chunking.method, "params": params},
                                               "version_ids": version_ids, "section_prefix": body.section_prefix,
                                               "embedding": {"provider": provider.id, "model": provider.model},
-                                              **({"contextual": {"model": body.contextual_model or settings.azure_chat_deployment}} if body.contextual else {})})
+                                              **({"contextual": {"model": body.contextual_model or generation.default_model()}} if body.contextual else {})})
     db.add(idx)
     db.flush()
     idx.collection = f"idx_{idx.id}"  # a unique namespace per index: nothing is ever overwritten
@@ -205,7 +215,7 @@ def chunk_vector(index_id: str, chunk_id: str, n: int = Query(16, ge=1, le=64), 
 
 class SearchIn(BaseModel):
     query: str = Field(min_length=1, max_length=4000)
-    mode: Literal["dense", "bm25", "hybrid"] = "dense"
+    mode: Literal["dense", "bm25", "hybrid", "tfidf", "graph", "graph_hybrid"] = "dense"
     top_k: int = Field(5, ge=1, le=50)
     candidates: int | None = Field(None, ge=1, le=200, description="Candidates fetched per retriever before fusion")
     score_threshold: float | None = None
@@ -239,7 +249,7 @@ def search_index(index_id: str, body: SearchIn, user: User = Depends(current_use
 
 class RetrieveIn(BaseModel):
     query: str = Field(min_length=1, max_length=4000)
-    mode: Literal["dense", "bm25", "hybrid"] = "dense"
+    mode: Literal["dense", "bm25", "hybrid", "tfidf", "graph", "graph_hybrid"] = "dense"
     top_k: int = Field(5, ge=1, le=50)
     transform: Literal["none", "rewrite", "multi_query", "hyde", "decompose"] = "none"
     n_queries: int = Field(3, ge=1, le=6)
@@ -287,8 +297,11 @@ def retrieve_pipeline(index_id: str, body: RetrieveIn, user: User = Depends(curr
 class AnswerIn(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     model: str | None = Field(None, max_length=100, description="Chat deployment; default AZURE_OPENAI_CHAT_DEPLOYMENT")
-    mode: Literal["dense", "bm25", "hybrid"] = "dense"
+    mode: Literal["dense", "bm25", "hybrid", "tfidf", "graph", "graph_hybrid"] = "dense"
     top_k: int = Field(5, ge=1, le=20)
+    transform: Literal["none", "rewrite", "multi_query", "hyde", "decompose"] = "none"
+    rerank: Literal["none", "llm", "cross_encoder"] = "none"
+    mmr: bool = False
     strict: bool = True
     temperature: float = Field(0.0, ge=0.0, le=2.0)
     max_output_tokens: int = Field(600, ge=16, le=8000)
@@ -307,12 +320,13 @@ def answer_question(index_id: str, body: AnswerIn, user: User = Depends(current_
     """Retrieve, build a grounded prompt, ask the chat model, and verify its citations against the passages sent."""
     i = load_index(db, user, index_id)
     try:
+        retrieved = pipeline.run(db, i, body.question, mode=body.mode, top_k=body.top_k, transform=body.transform, rerank=body.rerank, mmr_on=body.mmr, llm_model=body.model, expand=body.expand, neighbors=body.neighbors) if body.transform != "none" or body.rerank != "none" or body.mmr else None
         out = generation.answer(db, i, body.question, model=body.model, mode=body.mode, top_k=body.top_k, strict=body.strict,
                                  temperature=body.temperature, max_output_tokens=body.max_output_tokens,
                                  context_budget=body.context_budget, min_score=body.min_score,
                                  price_in_per_million=body.price_in_per_million, price_out_per_million=body.price_out_per_million,
                                  system_prompt=body.system_prompt, document_ids=body.document_ids,
-                                 expand=body.expand, neighbors=body.neighbors)
+                                 expand=body.expand, neighbors=body.neighbors, retrieved=retrieved)
         usage = out.get("usage") or {}
         db.add(RetrievalRun(index_id=i.id, user_id=user.id, query=body.question, mode=f"answer:{body.mode}",
                             params={"model": out.get("model"), "abstained": out.get("abstained"), "top_k": body.top_k,

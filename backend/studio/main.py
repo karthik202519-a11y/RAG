@@ -1,4 +1,4 @@
-"""RAG Learning Studio API.   uvicorn studio.main:app --reload   ->   http://127.0.0.1:8000/docs"""
+"""RAG API.   uvicorn studio.main:app --reload   ->   http://127.0.0.1:8000/docs"""
 import logging
 import os
 import threading
@@ -15,7 +15,7 @@ from . import __version__, jobs
 from . import db as dbmod
 from .config import settings
 from .registry import registry
-from .routers import auth, catalog, chunking_api, documents, evaluation, explorer, graph_api, indexes, jobs_api, multimodal_api, parser_lab, projects, recommend_api, settings_api, traces
+from .routers import auth, catalog, chunking_api, documents, evaluation, explorer, graph_api, indexes, jobs_api, multimodal_api, parser_lab, projects, recommend_api, settings_api, traces, workbench, storage
 
 log = logging.getLogger("studio")
 
@@ -55,14 +55,14 @@ async def lifespan(_: FastAPI):
     jobs.shutdown()
 
 
-app = FastAPI(title="RAG Learning Studio", version=__version__, lifespan=lifespan,
+app = FastAPI(title="RAG", version=__version__, lifespan=lifespan,
               description="A RAG engineering laboratory: ingest, parse, chunk, embed, retrieve, evaluate.")
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
                    allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 # Large JSON (a chunk preview is ~700 KB) compresses about 6x. Event streams are excluded by Starlette's defaults.
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 for r in (auth.router, projects.router, documents.router, jobs_api.router, catalog.router, chunking_api.router,
-          indexes.router, explorer.router, evaluation.router, parser_lab.router, traces.router, settings_api.router, graph_api.router, multimodal_api.router, recommend_api.router):
+          indexes.router, explorer.router, evaluation.router, parser_lab.router, traces.router, settings_api.router, graph_api.router, multimodal_api.router, recommend_api.router, workbench.router, storage.router):
     app.include_router(r)
 
 

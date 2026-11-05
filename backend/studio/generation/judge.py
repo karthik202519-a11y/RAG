@@ -41,7 +41,7 @@ def _parse(text: str) -> dict:
 def judge_answer(question: str, answer: str, passages: list[dict], model: str | None = None,
                  max_output_tokens: int = 1500) -> dict:
     """passages: [{n, text, ...}] as returned by the answer endpoint."""
-    model = model or settings.azure_chat_deployment
+    model = model or gen.default_model()
     ctx = "\n\n".join(f"[{p['n']}] {p['text']}" for p in passages)
     res = gen.chat_complete(model, [{"role": "system", "content": JUDGE_SYSTEM},
                                     {"role": "user", "content": f"Question: {question}\n\nPassages:\n{ctx}\n\nAnswer:\n{answer}"}],

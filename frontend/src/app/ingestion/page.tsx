@@ -84,7 +84,7 @@ export default function IngestionPage() {
   const active = jobs.filter((j) => ["queued", "running"].includes(j.status));
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="w-full min-w-0">
       <PageHeader title="Document Ingestion" subtitle="Upload files. Each one is hashed (duplicates are detected), stored, and parsed by a background job you can watch, cancel and retry." />
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -96,8 +96,8 @@ export default function IngestionPage() {
           sub={s?.extraction_success_rate != null ? `${fmt.pct(s.extraction_success_rate)} success` : undefined} />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[24rem_1fr]">
-        <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[21rem_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-5">
           <Card title="Upload">
             <div
               onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
@@ -187,10 +187,10 @@ export default function IngestionPage() {
           </Card>
         </div>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <Card title={`Documents (${docs.data?.total ?? 0})`} pad={false}
             actions={
-              <div className="flex gap-2">
+              <div className="flex min-w-0 flex-wrap gap-2">
                 <Input aria-label="Search documents" placeholder="Search name" className="h-8 w-40" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} />
                 <Select aria-label="Filter by status" className="h-8 w-32" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
                   <option value="">Any status</option>
@@ -205,7 +205,7 @@ export default function IngestionPage() {
             {docs.isLoading ? <Spinner /> : docs.data?.items.length === 0 ? (
               <div className="p-4"><Empty title="No documents match">Upload files on the left.</Empty></div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="relative overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-border text-xs text-dim">
                     <tr><th className="px-4 py-2 font-medium">Name</th><th className="px-2 font-medium">Status</th><th className="px-2 text-right font-medium">Pages</th><th className="px-2 text-right font-medium">Tokens</th><th className="px-2 text-right font-medium">Tables</th><th className="px-2 font-medium">Ver.</th><th><span className="sr-only">Actions</span></th></tr>

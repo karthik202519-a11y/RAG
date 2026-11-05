@@ -97,10 +97,10 @@ def run_one(db: Session, index: Index, q: EvalQuestion, cfg: dict) -> dict:
     advanced = cfg.get("transform", "none") != "none" or cfg.get("rerank", "none") != "none" or cfg.get("mmr")
     if advanced:
         ret = pipeline.run(db, index, q.question, mode=cfg["mode"], top_k=k, transform=cfg.get("transform", "none"),
-                           mmr_on=bool(cfg.get("mmr")), rerank=cfg.get("rerank", "none"), llm_model=cfg.get("llm_model"))
+                           mmr_on=bool(cfg.get("mmr")), rerank=cfg.get("rerank", "none"), llm_model=cfg.get("llm_model"), expand=cfg.get("expand", "none"), neighbors=cfg.get("neighbors", 1), document_ids=cfg.get("document_ids"), types=cfg.get("types"), score_threshold=cfg.get("score_threshold"), rrf_k=cfg.get("rrf_k", 60), n_queries=cfg.get("n_queries", 3), mmr_lambda=cfg.get("mmr_lambda", .6), rerank_candidates=cfg.get("rerank_candidates", 20))
         hits, llm_tokens = ret["results"], ret["llm_tokens"]
     else:
-        ret = retrieval.search(db, index, q.question, cfg["mode"], k)
+        ret = retrieval.search(db, index, q.question, cfg["mode"], k, expand=cfg.get("expand", "none"), neighbors=cfg.get("neighbors", 1), document_ids=cfg.get("document_ids"), types=cfg.get("types"), score_threshold=cfg.get("score_threshold"), rrf_k=cfg.get("rrf_k", 60))
         hits, llm_tokens = ret["results"], 0
     ms = (time.perf_counter() - t0) * 1000
     ev = q.evidence if q.answerable else []
@@ -111,14 +111,14 @@ def run_one(db: Session, index: Index, q: EvalQuestion, cfg: dict) -> dict:
            "top": [{"rank": i + 1, "filename": h["filename"], "pages": h["pages"], "score": h["score"], "chunk_id": h["chunk_id"]}
                    for i, h in enumerate(hits[:k])]}
     if cfg.get("with_answers"):
-        out["answer"] = answer_check(db, index, q, cfg)
+        out["answer"] = answer_check(db, index, q, cfg, ret)
     return out
 
 
-def answer_check(db: Session, index: Index, q: EvalQuestion, cfg: dict) -> dict:
+def answer_check(db: Session, index: Index, q: EvalQuestion, cfg: dict, retrieved: dict | None = None) -> dict:
     """Generate an answer and run deterministic checks. Optional LLM judge (cfg judge) adds faithfulness and relevance."""
     r = generation.answer(db, index, q.question, model=cfg.get("llm_model"), mode=cfg["mode"], top_k=min(cfg["k"], 8),
-                          strict=True, max_output_tokens=int(cfg.get("max_output_tokens", 500)))
+                          strict=True, max_output_tokens=int(cfg.get("max_output_tokens", 500)), retrieved=retrieved)
     text = r["answer"] or ""
     kws = q.keywords if q.answerable else []
     out = {"abstained": bool(r["abstained"]), "citations_resolve": r["citations"]["all_resolve"] if not r["abstained"] else None,

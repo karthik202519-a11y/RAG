@@ -28,7 +28,7 @@ export default function Recommendations() {
   if (!project) return <Empty title="No project selected"><Link className="text-accent underline" href="/projects">Create a project first</Link></Empty>;
   const d = q.data;
   return (
-    <div className="mx-auto max-w-4xl space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <PageHeader title="Suggestions" subtitle="A pick for every stage of the pipeline, with the reasons and the numbers behind it. A pick marked Measured comes from your own evaluation runs and overrides the rules; the rest come from measurements of your documents. Nothing here calls a model." />
       <ErrorBox error={q.error} />
       {d && (

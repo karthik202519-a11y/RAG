@@ -34,7 +34,7 @@ export default function LoginPage() {
         <div className="mb-6 flex items-center gap-3">
           <div className="grid size-10 place-items-center rounded-lg bg-accent text-accent-ink"><FlaskConical className="size-5" aria-hidden /></div>
           <div>
-            <h1 className="text-lg font-semibold leading-tight">RAG Learning Studio</h1>
+            <h1 className="text-lg font-semibold leading-tight">RAG</h1>
             <p className="text-xs text-dim">Build, compare and understand retrieval.</p>
           </div>
         </div>

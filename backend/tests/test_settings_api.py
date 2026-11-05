@@ -13,7 +13,7 @@ def test_overview_never_returns_secret_values(client, auth, monkeypatch):
 
 
 def test_local_connection_tests(client, auth):
-    for target in ("database", "storage", "qdrant", "faiss"):
+    for target in ("database", "storage", "qdrant", "faiss", "chroma", "lancedb"):
         r = client.post("/settings/test", headers=auth, json={"target": target}).json()
         assert r["ok"], r
     bad = client.post("/settings/test", headers=auth, json={"target": "chat"}).json()

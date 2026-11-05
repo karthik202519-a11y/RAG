@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Database, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { MethodGuide } from "@/components/learning-guide";
 import { ParamControl, defaults, validate } from "@/components/param-form";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner, fmt, statusTone } from "@/components/ui";
 import { api, type Catalog, type Doc, type IndexInfo, type Providers } from "@/lib/api";
@@ -37,6 +38,7 @@ export default function IndexesPage() {
   const [prefix, setPrefix] = useState(true);
   const [store, setStore] = useState("qdrant");
   const [contextual, setContextual] = useState(false);
+  const [contextualModel, setContextualModel] = useState("");
 
   const m = methods.find((x) => x.id === method);
   const p = params ?? (m ? defaults(m) : {});
@@ -50,7 +52,7 @@ export default function IndexesPage() {
   const create = useMutation({
     mutationFn: () => api<IndexInfo>(`/projects/${pid}/indexes`, {
       method: "POST",
-      json: { name: name || `${m?.name} · ${chosen?.model}`, provider, store, contextual, section_prefix: prefix,
+      json: { name: name || `${m?.name} · ${chosen?.model}`, provider, store, contextual, contextual_model: contextualModel || null, section_prefix: prefix,
         chunking: { method, params: p }, document_ids: excluded.length ? selDocs.map((d) => d.id) : null },
     }),
     onSuccess: () => { setName(""); void qc.invalidateQueries({ queryKey: ["indexes", pid] }); },
@@ -64,31 +66,17 @@ export default function IndexesPage() {
   if (!project) return <Empty title="No project selected"><Link className="text-accent underline" href="/projects">Create a project first</Link></Empty>;
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="w-full min-w-0">
       <PageHeader title="Indexes & Embeddings"
         subtitle="An index is a frozen recipe: which documents, cut by which chunker, embedded by which model, stored in which collection. Change any ingredient and you build a new index. Nothing is overwritten, so you can compare them." />
 
-      <div className="grid gap-5 xl:grid-cols-[26rem_1fr]">
+      <ErrorBox error={providers.error ?? catalog.error ?? docs.error ?? indexes.error} />
+      <div className="grid gap-5 xl:grid-cols-[26rem_minmax(0,1fr)]">
         <div className="space-y-5">
-          <Card title="Providers">
-            <ul className="space-y-2 text-sm">
-              {providers.data?.embedding.map((e) => (
-                <li key={e.id} className="flex items-start justify-between gap-2">
-                  <span><span className="font-medium">{e.id}</span>{e.model && <span className="text-dim"> · {e.model}</span>}
-                    {!e.semantic && <span className="block text-xs text-warn">Offline demo: matches shared words, not meaning.</span>}
-                    {!e.available && <span className="block text-xs text-dim">{e.detail}</span>}</span>
-                  {!e.available && <Badge tone="warn">not configured</Badge>}
-                </li>
-              ))}
-              {providers.data?.vector_stores.map((v) => (
-                <li key={v.id} className="flex items-center justify-between"><span><span className="font-medium">{v.id}</span><span className="text-dim"> · {v.mode}</span></span></li>
-              ))}
-            </ul>
-            <p className="mt-3 text-xs text-dim">Answer generation: {providers.data?.generation.configured ? "configured" : providers.data?.generation.detail}</p>
-          </Card>
+
 
           <Card title="Build a new index">
-            {(docs.data?.items.length ?? 0) === 0 ? (
+            {docs.isLoading || providers.isLoading || catalog.isLoading ? <Spinner label="Loading documents and available methods" /> : (docs.data?.items.length ?? 0) === 0 ? (
               <Empty title="No ready documents"><Link className="text-accent underline" href="/ingestion">Upload and parse a document first</Link></Empty>
             ) : (
               <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
@@ -108,18 +96,28 @@ export default function IndexesPage() {
                     {methods.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
                   </Select>
                 </Field>
+                <MethodGuide id={method}/>
+                <details className="rounded-md border border-border p-3">
+                  <summary className="cursor-pointer text-sm font-medium">Chunk settings and context (optional)</summary>
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs text-dim">Works well: {m?.advantages.join("; ")}</p>
+                    <p className="text-xs text-dim">Tradeoffs: {m?.disadvantages.join("; ")}</p>
                 {m?.params.map((sp) => <ParamControl key={sp.name} p={sp} value={p[sp.name]} onChange={(v) => setParams({ ...p, [sp.name]: v })} />)}
                 <label className="flex items-start gap-2 text-sm">
                   <input type="checkbox" className="mt-1" checked={prefix} onChange={(e) => setPrefix(e.target.checked)} />
                   <span>Prefix text chunks with their section title when embedding<span className="block text-xs text-dim">Cheap context: the model also sees which section the text came from.</span></span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" className="mt-1" checked={contextual} onChange={(e) => setContextual(e.target.checked)} />
+                  <input type="checkbox" className="mt-1" checked={contextual} disabled={!providers.data?.generation.configured} onChange={(e) => setContextual(e.target.checked)} />
                   <span>Contextual embedding<span className="block text-xs text-dim">A chat model writes one sentence placing each text chunk in its document; it is embedded with the chunk and stored so you can read it. Costs one chat call per chunk.</span></span>
                 </label>
+                {contextual && <Field label="Context model"><Select aria-label="Context model" value={contextualModel || providers.data?.generation.default_model || ""} onChange={(e) => setContextualModel(e.target.value)}>{providers.data?.generation.models.map((model) => <option key={model}>{model}</option>)}</Select></Field>}
+                {!providers.data?.generation.configured && <p className="text-xs text-dim">Contextual methods need a chat provider. Configure one in Settings.</p>}
+                  </div>
+                </details>
                 <fieldset>
                   <legend className="mb-1 text-xs font-medium text-dim">Documents ({selDocs.length} of {docs.data?.items.length})</legend>
-                  <ul className="max-h-36 space-y-1 overflow-auto text-sm">
+                  <ul className="space-y-1 text-sm">
                     {docs.data?.items.map((d) => (
                       <li key={d.id}><label className="flex items-center gap-2">
                         <input type="checkbox" checked={!excluded.includes(d.id)}
@@ -132,12 +130,30 @@ export default function IndexesPage() {
                 </fieldset>
                 {problem && <ErrorBox error={new Error(problem)} />}
                 <ErrorBox error={create.error} />
-                <Button type="submit" variant="primary" className="w-full" loading={create.isPending} disabled={!!problem || !provider || selDocs.length === 0}>
+                <Button type="submit" variant="primary" className="w-full" loading={create.isPending} disabled={!!problem || !provider || selDocs.length === 0 || !providers.data?.vector_stores.find((v) => v.id === store)?.available || ((method === "contextual" || method === "proposition" || contextual) && !providers.data?.generation.configured)}>
                   <Database className="size-4" aria-hidden /> Build index
                 </Button>
               </form>
             )}
           </Card>
+          <details className="rounded-lg border border-border bg-surface p-4">
+            <summary className="cursor-pointer text-sm font-medium">Provider availability and setup</summary>
+            <div className="mt-3">
+            <ul className="space-y-2 text-sm">
+              {providers.data?.embedding.map((e) => (
+                <li key={e.id} className="flex items-start justify-between gap-2">
+                  <span><span className="font-medium">{e.id}</span>{e.model && <span className="text-dim"> · {e.model}</span>}
+                    {!e.semantic && <span className="block text-xs text-warn">Offline demo: matches shared words, not meaning.</span>}
+                    {!e.available && <span className="block text-xs text-dim">{e.detail}</span>}</span>
+                  {!e.available && <Badge tone="warn">not configured</Badge>}
+                </li>
+              ))}
+              {providers.data?.vector_stores.map((v) => (
+                <li key={v.id} className="flex items-start justify-between gap-2"><span><span className="font-medium">{v.id}</span><span className="block text-xs text-dim">{v.mode} ? {v.detail}</span></span><Badge tone={v.available ? "good" : "warn"}>{v.available ? "available" : "needs setup"}</Badge></li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-dim">Answer generation: {providers.data?.generation.configured ? "configured" : providers.data?.generation.detail}</p>
+          </div></details>
         </div>
 
         <div className="space-y-4">
@@ -165,7 +181,7 @@ function IndexCard({ i, onDelete }: { i: IndexInfo; onDelete: () => void }) {
     ["Collection", i.collection],
   ];
   return (
-    <Card title={<span className="flex items-center gap-2">{i.name} <Badge tone={statusTone(i.status === "building" ? "running" : i.status)}>{i.status}</Badge></span>}
+    <Card title={<span className="flex flex-wrap items-center gap-2">{i.name} <Badge tone={statusTone(i.status === "building" ? "running" : i.status)}>{i.status}</Badge></span>}
       actions={<>
         {i.status === "ready" && <Link href={`/retrieval?index=${i.id}`}><Button size="sm" variant="primary"><Search className="size-3.5" aria-hidden /> Search</Button></Link>}
         {i.status === "ready" && <Button size="sm" onClick={() => setOpen(!open)}>{open ? "Hide records" : "Inspect"}</Button>}
@@ -181,8 +197,9 @@ function IndexCard({ i, onDelete }: { i: IndexInfo; onDelete: () => void }) {
       )}
       {i.error && <div className="mb-3"><ErrorBox error={new Error(i.error)} /></div>}
       <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-        {rows.map(([k, v]) => <div key={k} className="flex justify-between gap-3"><dt className="text-dim">{k}</dt><dd className="truncate text-right font-mono text-xs" title={v}>{v}</dd></div>)}
+        {rows.slice(0,3).map(([k, v]) => <div key={k} className="flex justify-between gap-3"><dt className="text-dim">{k}</dt><dd className="truncate text-right font-mono text-xs" title={v}>{v}</dd></div>)}
       </dl>
+      <details className="mt-3"><summary className="cursor-pointer text-xs font-medium text-accent">Configuration & build details</summary><dl className="mt-2 grid min-w-0 gap-x-6 gap-y-1 text-xs sm:grid-cols-2">{rows.slice(3).map(([k,v])=><div key={k} className="flex min-w-0 justify-between gap-3"><dt className="text-dim">{k}</dt><dd className="min-w-0 truncate font-mono" title={v}>{v}</dd></div>)}</dl></details>
       {open && <Records id={i.id} />}
     </Card>
   );

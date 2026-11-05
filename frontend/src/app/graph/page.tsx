@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { Construction } from "@/components/construction";
 import { useMemo, useState } from "react";
 import { SERIES_COLORS } from "@/components/charts-colors";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner, Stat } from "@/components/ui";
@@ -63,7 +64,7 @@ function GraphCanvas({ graph }: { graph: NonNullable<GraphInfo["graph"]> }) {
   const selected = graph.nodes.find((n) => n.id === sel);
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-md border border-border bg-surface-2" role="img" aria-label={`Knowledge graph with ${graph.nodes.length} entities`}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-md border border-border bg-surface-2" role="group" aria-label={`Knowledge graph with ${graph.nodes.length} entities`}>
         {graph.edges.map((e, i) => {
           const a = pos.get(e.source), b = pos.get(e.target);
           if (!a || !b) return null;
@@ -74,7 +75,7 @@ function GraphCanvas({ graph }: { graph: NonNullable<GraphInfo["graph"]> }) {
           const p = pos.get(n.id)!;
           const r = 4 + Math.min(10, Math.sqrt(n.degree) * 2.2);
           return (
-            <g key={n.id} opacity={on(n.id) ? 1 : 0.2} className="cursor-pointer" onClick={() => setSel(sel === n.id ? null : n.id)}>
+            <g key={n.id} role="button" tabIndex={0} aria-label={`Inspect entity ${n.name}`} aria-pressed={sel===n.id} opacity={on(n.id) ? 1 : 0.2} className="cursor-pointer" onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setSel(sel===n.id?null:n.id);}}} onClick={() => setSel(sel === n.id ? null : n.id)}>
               <circle cx={p.x} cy={p.y} r={r} fill={SERIES_COLORS[(n.community < 0 ? 0 : n.community) % SERIES_COLORS.length]} stroke="var(--surface)" strokeWidth={1.5} />
               {(n.degree >= 3 || sel === n.id) && <text x={p.x + r + 3} y={p.y + 3} fontSize="10" fill="currentColor" className="text-text">{n.name.length > 24 ? n.name.slice(0, 23) + "…" : n.name}</text>}
               <title>{`${n.name}${n.type ? ` (${n.type})` : ""} · ${n.degree} relations · in ${n.mentions} chunks`}</title>
@@ -117,8 +118,9 @@ export default function GraphPage() {
   const busy = b?.status === "queued" || b?.status === "running";
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="w-full min-w-0">
       <PageHeader title="GraphRAG Explorer" subtitle="A model reads chunks and lists the entities and relations they state. Anything it names that is not in the chunk text is thrown away, so every edge points at the chunk it came from. Then you can search by following relations and compare with plain vector search." />
+      <Construction indexId={indexId} kind="graph" />
       <div className="mb-4 grid gap-3 rounded-lg border border-border bg-surface p-3 md:grid-cols-[1fr_10rem_auto]">
         <Field label="Index"><Select value={indexId} onChange={(e) => setIdx(e.target.value)} aria-label="Index">{ready.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</Select></Field>
         <Field label="Chunks to read" hint="One chat call each"><Input type="number" min={5} max={2000} value={maxChunks} onChange={(e) => setMaxChunks(Number(e.target.value))} /></Field>
@@ -137,7 +139,7 @@ export default function GraphPage() {
             <Stat label="Chunks read" value={`${b.chunks_processed}/${b.chunks_requested}`} sub={b.chunks_failed ? `${b.chunks_failed} failed` : "none failed"} />
             <Stat label="Build" value={b.seconds != null ? `${b.seconds} s` : "n/a"} sub={`${b.tokens.toLocaleString()} tokens · ${b.model}`} />
           </div>
-          <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <Card title="Graph"><GraphCanvas graph={g} /></Card>
             <Card title="Communities" pad>
               {g.communities.length === 0 ? <p className="text-sm text-dim">No relations, so no communities.</p> : (

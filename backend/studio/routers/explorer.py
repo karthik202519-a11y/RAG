@@ -78,7 +78,7 @@ def similarity(index_id: str, body: SimIn, user: User = Depends(current_user), d
     if missing:
         raise HTTPException(404, f"Chunks not in this index: {missing}")
     try:
-        q = embed_texts(db, i.provider, [body.query]).vectors[0]
+        q = embed_texts(db, i.provider, [body.query], input_type="query", expected_model=i.model).vectors[0]
     except ProviderError as e:
         raise HTTPException(502, str(e)) from None
     vecs = _vectors(i, body.chunk_ids)

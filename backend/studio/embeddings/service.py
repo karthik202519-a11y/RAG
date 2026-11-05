@@ -10,12 +10,15 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ..config import settings
 from ..models import EmbeddingCache
-from .providers import get_provider
+from .providers import ProviderError, get_provider
 
 _IN_LIMIT = 500  # keep IN (...) lists small for SQLite
 
 
-def cache_key(provider: str, model: str, text: str) -> str:
+def cache_key(provider: str, model: str, text: str, input_type: str = "document") -> str:
+    # Preserve existing document cache keys; asymmetric query vectors must never reuse them.
+    if input_type == "query" and provider in ("cohere", "voyage"):
+        model = f"{model}\x1fquery"
     return hashlib.sha256(f"{provider}\x1f{model}\x1f{text}".encode()).hexdigest()
 
 
@@ -27,11 +30,15 @@ class EmbedResult:
     seconds_in_provider: float = 0.0
 
 
-def embed_texts(db: Session, provider_id: str, texts: list[str], progress=None) -> EmbedResult:
+def embed_texts(db: Session, provider_id: str, texts: list[str], progress=None, *, input_type: str = "document", expected_model: str | None = None) -> EmbedResult:
     """Return one vector per text. Cached texts cost nothing; the rest are sent in provider batches."""
     import time
+    if input_type not in ("document", "query"):
+        raise ValueError("input_type must be document or query")
     provider = get_provider(provider_id)
-    keys = [cache_key(provider.id, provider.model, t) for t in texts]
+    if expected_model is not None and provider.model != expected_model:
+        raise ProviderError("The configured embedding model differs from this index. Restore its original model or build a new index.")
+    keys = [cache_key(provider.id, provider.model, t, input_type) for t in texts]
     found: dict[str, np.ndarray] = {}
     uniq = list(dict.fromkeys(keys))
     for i in range(0, len(uniq), _IN_LIMIT):
@@ -44,7 +51,8 @@ def embed_texts(db: Session, provider_id: str, texts: list[str], progress=None) 
 
     def call(batch):  # network only: sessions are not thread-safe, so no database access in here
         t0 = time.perf_counter()
-        return batch, provider.embed([t for _, t in batch]), time.perf_counter() - t0
+        kwargs = {"input_type": input_type} if provider.id in ("cohere", "voyage") else {}
+        return batch, provider.embed([t for _, t in batch], **kwargs), time.perf_counter() - t0
 
     # Batches are independent requests: send several at once. Results come back in order and are
     # written to the cache from this thread only.

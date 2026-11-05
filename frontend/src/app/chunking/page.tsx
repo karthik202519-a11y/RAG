@@ -113,7 +113,7 @@ export default function ChunkingPlayground() {
   const selChunk = selRes && selected ? selRes.chunks[selected.chunk] : null;
 
   return (
-    <div className="mx-auto max-w-[1600px]">
+    <div className="w-full min-w-0">
       <PageHeader title="Chunking Playground"
         subtitle="Cut a real document with different methods and see exactly where each chunk starts and ends. Every number comes from running the method on your document."
         actions={
@@ -146,31 +146,9 @@ export default function ChunkingPlayground() {
           <span className="basis-full text-xs text-dim">Measured: {rec.data.chunking.measured}.</span>
         </div>
       )}
-      <div className="grid gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_24rem]">
-        {/* ---- left: method catalog ---- */}
-        <Card title={`Methods (${methods.filter((m) => m.status !== "unavailable").length})`} pad={false} className="h-fit">
-          <ul className="divide-y divide-border" aria-label="Chunking methods">
-            {methods.filter((m) => m.status !== "unavailable").map((m) => (
-              <li key={m.id}>
-                <button onClick={() => setMethod(m.id)} aria-pressed={cur?.method === m.id} title={m.summary}
-                  className={clsx("flex w-full items-center px-3 py-2 text-left text-sm hover:bg-surface-2", cur?.method === m.id && "bg-accent-soft font-medium text-accent")}>
-                  <span className="flex-1">{m.name}</span>
-                  {m.status === "requires_credentials" && <Badge tone="warn" title="Calls the chat model: spends tokens">chat model</Badge>}
-                </button>
-              </li>
-            ))}
-          </ul>
-          {methods.some((m) => m.status === "unavailable") && <details className="border-t border-border">
-            <summary className="cursor-pointer px-3 py-2 text-xs text-dim hover:bg-surface-2">{methods.filter((m) => m.status === "unavailable").length} more planned, not runnable yet</summary>
-            <ul className="px-3 pb-2 text-xs text-dim">
-              {methods.filter((m) => m.status === "unavailable").map((m) => <li key={m.id} className="py-0.5" title={m.unavailable_reason ?? undefined}>{m.name}</li>)}
-            </ul>
-            <p className="px-3 pb-2 text-xs text-dim">Hover for why. <Link href="/catalog" className="text-accent underline">Open the Method Catalog</Link></p>
-          </details>}
-        </Card>
-
+      <div className="grid gap-4 lg:grid-cols-[19rem_minmax(0,1fr)]">
         {/* ---- centre: visualisation ---- */}
-        <div className="min-w-0 space-y-4">
+        <div className="order-last min-w-0 space-y-4">
           <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Configurations">
             {cfgs.map((c, i) => (
               <button key={c.id} role="tab" aria-selected={i === active} onClick={() => setActive(i)}
@@ -256,9 +234,9 @@ export default function ChunkingPlayground() {
         </div>
 
         {/* ---- right: configuration and explanation ---- */}
-        <div className="space-y-4">
+        <div className="order-first min-w-0 space-y-4">
           <Card title={`Configure ${cur?.label ?? ""}`}>
-            <div className="mb-3">
+            <div className="mb-3 space-y-3"><Field label="Chunking method"><Select aria-label="Chunking method" value={cur?.method??""} onChange={e=>setMethod(e.target.value)}>{methods.filter(m=>m.status!=="unavailable").map(m=><option key={m.id} value={m.id}>{m.name}{m.status==="requires_credentials"?" (chat model)":""}</option>)}</Select></Field>
               <details>
                 <summary className="cursor-pointer text-xs font-medium text-dim hover:text-text">Experiment presets ({PRESETS.length})</summary>
                 <div className="mt-2 flex flex-wrap gap-1.5">

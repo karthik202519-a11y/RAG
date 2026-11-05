@@ -251,7 +251,7 @@ def recommend(db: Session, project_id: str) -> dict:
         stages.append(_stage("reranking", "Reranking", "none", "No reranker", "default", ["No reranker is available. pip install fastembed enables the local cross-encoder."]))
 
     # ---------------------------------------------------------------- 7. generation
-    gen_ok = gen.generation_status()[0]
+    gen_ok = gen.status_for(gen.default_model())[0]
     gate = None
     for r in sorted(runs, key=lambda r: r.created_at, reverse=True):
         sweep = ((r.metrics or {}).get("unanswerable_gate") or {}).get("sweep")
@@ -265,7 +265,7 @@ def recommend(db: Session, project_id: str) -> dict:
     else:
         reasons = ["Grounded mode with citation checking: the model may only use the retrieved passages, and every [n] is checked against what was sent.",
                    "Judge faithfulness on a sample: a resolving citation proves the number exists, not that the passage supports the claim."]
-        ev = [_ev("Default model", settings.azure_chat_deployment or "n/a")]
+        ev = [_ev("Default model", gen.default_model() or "n/a")]
         params = {"strict": True}
         if gate:
             r, sweep = gate

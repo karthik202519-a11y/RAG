@@ -4,6 +4,7 @@ Credentials live in the environment (.env), never in the database, so this page 
 as set / not set and never returns a value. Tests make one tiny real call and report what came back.
 """
 import time
+import uuid
 from typing import Literal
 
 import numpy as np
@@ -20,7 +21,7 @@ from ..embeddings import PROVIDERS
 from ..generation import service as gen
 from ..models import User
 from ..security import current_user
-from ..vectorstores import faiss_store, qdrant_store
+from ..vectorstores import STORES, faiss_store, qdrant_store
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -52,7 +53,7 @@ def overview(user: User = Depends(current_user)) -> dict:
             {"env": "AZURE_OPENAI_VISION_DEPLOYMENT", "state": _is_set(settings.azure_vision_deployment), "value": settings.azure_vision_deployment or None},
         ],
         "embedding": [{"id": p.id, "model": p.model, "available": p.status()[0], "detail": p.status()[1]} for p in PROVIDERS.values()],
-        "generation": {"configured": gen.generation_status()[0], "detail": gen.generation_status()[1], "models": gen.configured_models()},
+        "generation": {"configured": gen.status_for(gen.default_model())[0], "detail": gen.status_for(gen.default_model())[1], "models": gen.configured_models()},
         "vision": {"configured": gen.vision_status()[0], "detail": gen.vision_status()[1]},
         "notes": ["Secrets are read from the environment and are never stored in the database or returned by the API.",
                   "Edit .env and restart the API to change a setting."],
@@ -60,7 +61,7 @@ def overview(user: User = Depends(current_user)) -> dict:
 
 
 class TestIn(BaseModel):
-    target: Literal["database", "storage", "embedding", "chat", "vision", "qdrant", "faiss"]
+    target: Literal["database", "storage", "embedding", "chat", "vision", "qdrant", "faiss", "chroma", "lancedb", "pgvector"]
     model: str | None = None
 
 
@@ -94,7 +95,7 @@ def _run(body: TestIn, db: Session) -> str:
         r = p.embed(["connection test"])
         return f"Embedded one text with {p.model}: {r.vectors.shape[1]} dimensions, {r.tokens} tokens billed."
     if t == "chat":
-        model = body.model or settings.azure_chat_deployment
+        model = body.model or gen.default_model()
         r = gen.chat_complete(model, [{"role": "user", "content": "Reply with the single word: ok"}], 0.0, 200)
         return f"{r.model} replied in {r.completion_tokens} tokens ({r.prompt_tokens} prompt)."
     if t == "vision":
@@ -106,9 +107,18 @@ def _run(body: TestIn, db: Session) -> str:
     if t == "qdrant":
         n = len(qdrant_store.client().get_collections().collections)
         return f"Qdrant ({qdrant_store.mode()}) is reachable; {n} collections."
-    vec = np.ones((1, 4), dtype=np.float32)
-    faiss_store.create_collection("_healthcheck", 4)
-    faiss_store.upsert("_healthcheck", ["0" * 32], vec, [{}])
-    hit = faiss_store.search("_healthcheck", vec[0], 1)
-    faiss_store.delete_collection("_healthcheck")
-    return f"FAISS wrote and searched a test vector (score {hit[0].score:.2f})."
+    store = STORES[t]
+    ok, why = store.status()
+    if not ok:
+        raise RuntimeError(why)
+    name = "healthcheck_" + uuid.uuid4().hex[:12]
+    vec = np.ones((1, 4), dtype=np.float32) / 2
+    try:
+        store.create_collection(name, 4)
+        store.upsert(name, ["0" * 32], vec, [{}])
+        hit = store.search(name, vec[0], 1)
+        if not hit:
+            raise RuntimeError("Test vector was not returned")
+        return f"{t} wrote and searched a test vector (score {hit[0].score:.2f})."
+    finally:
+        store.delete_collection(name)

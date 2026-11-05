@@ -172,7 +172,7 @@ def assign_splits(dataset_id: str, body: SplitIn, user: User = Depends(current_u
 class RunIn(BaseModel):
     index_id: str
     label: str = Field("", max_length=200)
-    mode: Literal["dense", "bm25", "hybrid"] = "dense"
+    mode: Literal["dense", "bm25", "hybrid", "tfidf", "graph", "graph_hybrid"] = "dense"
     k: int = Field(5, ge=1, le=50)
     split: Literal["all", "train", "validation", "test"] = "all"
     transform: Literal["none", "rewrite", "multi_query", "hyde", "decompose"] = "none"
@@ -219,7 +219,7 @@ MAX_GRID = 24
 
 class GridIn(BaseModel):
     index_ids: list[str] = Field(min_length=1, max_length=8)
-    modes: list[Literal["dense", "bm25", "hybrid"]] = Field(default_factory=lambda: ["dense"], min_length=1, max_length=3)
+    modes: list[Literal["dense", "bm25", "hybrid", "tfidf", "graph", "graph_hybrid"]] = Field(default_factory=lambda: ["dense"], min_length=1, max_length=3)
     ks: list[int] = Field(default_factory=lambda: [5], min_length=1, max_length=4)
     rerank: list[Literal["none", "llm", "cross_encoder"]] = Field(default_factory=lambda: ["none"], min_length=1, max_length=3)
     split: Literal["all", "train", "validation", "test"] = "all"

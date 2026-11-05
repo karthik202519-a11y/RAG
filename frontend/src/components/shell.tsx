@@ -2,17 +2,18 @@
 
 import clsx from "clsx";
 import {
-  BookOpen, ClipboardCheck, Database, FileStack, FolderKanban, LayoutDashboard, LogOut, Menu, Moon, Activity, Network, Settings, Lightbulb, Image as ImageIcon, ScanText, Scissors, ScatterChart, Search, Sun, X,
+  BookOpen, ClipboardCheck, Database, FileStack, FolderKanban, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Moon, Activity, Network, Settings, Lightbulb, Workflow as WorkflowIcon, FlaskConical, GraduationCap, Image as ImageIcon, ScanText, Scissors, ScatterChart, Search, Sun, X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type Catalog, type EvalDatasetInfo, type IndexInfo, type Providers } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { PLANNED } from "@/lib/planned";
 import { useProject } from "@/lib/project";
 import { Spinner } from "./ui";
+import { Workflow } from "./workflow";
 
 // Grouped by the order people actually work: set up, build the pipeline, look at it, measure it.
 const GROUPS = [
@@ -21,6 +22,7 @@ const GROUPS = [
     { href: "/recommendations", label: "Suggestions", icon: Lightbulb },
     { href: "/projects", label: "Projects & Collections", icon: FolderKanban } ] },
   { label: "Build", items: [
+    { href: "/pipelines", label: "Pipeline Builder", icon: WorkflowIcon },
     { href: "/ingestion", label: "Document Ingestion", icon: FileStack },
     { href: "/parsing", label: "Parser Lab", icon: ScanText },
     { href: "/chunking", label: "Chunking Playground", icon: Scissors },
@@ -28,12 +30,14 @@ const GROUPS = [
   { label: "Explore", items: [
     { href: "/retrieval", label: "Retrieval Lab", icon: Search },
     { href: "/embeddings", label: "Embedding Explorer", icon: ScatterChart },
+    { href: "/storage", label: "Storage Explorer", icon: Database },
     { href: "/graph", label: "GraphRAG Explorer", icon: Network },
     { href: "/visual", label: "Visual Lab", icon: ImageIcon } ] },
   { label: "Measure", items: [
+    { href: "/experiments", label: "Experiment Studio", icon: FlaskConical },
     { href: "/evaluation", label: "Evaluation Center", icon: ClipboardCheck },
     { href: "/traces", label: "Traces", icon: Activity } ] },
-  { label: "Learn", items: [{ href: "/catalog", label: "Method Catalog", icon: BookOpen }] },
+  { label: "Learn", items: [{ href: "/learn", label: "Learning Guide", icon: GraduationCap },{ href: "/catalog", label: "Method Catalog", icon: BookOpen }] },
   { label: "System", items: [{ href: "/settings", label: "Settings", icon: Settings }] },
 ];
 
@@ -94,25 +98,25 @@ function usePrefetch(projectId: string | undefined) {
   };
 }
 
-function NavLinks({ pathname, onNavigate, onIntent }: { pathname: string; onNavigate?: () => void; onIntent?: (href: string) => void }) {
+function NavLinks({ pathname, onNavigate, onIntent, compact=false }: { compact?:boolean; pathname: string; onNavigate?: () => void; onIntent?: (href: string) => void }) {
   return (
-    <nav aria-label="Main" className="space-y-4 px-2 pb-4">
+    <nav aria-label="Main" className={clsx("px-2 pb-4",compact?"space-y-2":"space-y-3")}>
       {GROUPS.map((g) => (
         <div key={g.label}>
-          <div className="px-2.5 pb-1 text-xs font-medium text-dim">{g.label}</div>
+          <div className={compact?"sr-only":"px-2.5 pb-1 text-xs font-medium text-dim"}>{g.label}</div>
           {g.items.map((n) => {
             const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
             return (
-              <Link key={n.href} href={n.href} onClick={onNavigate} onMouseEnter={() => onIntent?.(n.href)} onFocus={() => onIntent?.(n.href)} aria-current={active ? "page" : undefined}
+              <Link key={n.href} href={n.href} aria-label={n.label} title={compact?n.label:undefined} onClick={onNavigate} onMouseEnter={() => onIntent?.(n.href)} onFocus={() => onIntent?.(n.href)} aria-current={active ? "page" : undefined}
                 className={clsx("flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm hover:bg-surface-2",
-                  active && "bg-accent-soft font-medium text-accent")}>
-                <n.icon className="size-4 shrink-0" aria-hidden /> {n.label}
+                  compact&&"justify-center py-2",active && "bg-accent-soft font-medium text-accent")}>
+                <n.icon className="size-4 shrink-0" aria-hidden /> <span className={compact?"sr-only":undefined}>{n.label}</span>
               </Link>
             );
           })}
         </div>
       ))}
-      <details className="group" open={pathname.startsWith("/planned")}>
+      {PLANNED.length>0 && <details className="group" open={pathname.startsWith("/planned")}>
         <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-2.5 py-1.5 text-xs font-medium text-dim hover:bg-surface-2">
           <span>Not built yet ({PLANNED.length})</span>
           <span aria-hidden className="transition-transform group-open:rotate-90">›</span>
@@ -128,7 +132,7 @@ function NavLinks({ pathname, onNavigate, onIntent }: { pathname: string; onNavi
             );
           })}
         </div>
-      </details>
+      </details>}
     </nav>
   );
 }
@@ -141,6 +145,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { theme, toggle } = useTheme();
   const prefetch = usePrefetch(project?.id);
   const [menu, setMenu] = useState(false);
+  const [compactNav,setCompactNav]=useState(false);
+  const drawer = useRef<HTMLDivElement>(null);
   const isLogin = pathname === "/login";
 
   useEffect(() => {
@@ -150,9 +156,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!menu) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenu(false);
+    const previous = document.activeElement as HTMLElement | null;
+    const focusable = () => Array.from(drawer.current?.querySelectorAll<HTMLElement>('a[href], summary, button:not([disabled]), select:not([disabled]), input:not([disabled]), [tabindex="0"]') ?? []).filter((el) => el.checkVisibility());
+    focusable()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(false);
+      if (e.key !== "Tab") return;
+      const elements = focusable();
+      const first = elements[0], last = elements[elements.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+    };
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      window.removeEventListener("keydown", onKey);
+      previous?.focus();
+    };
   }, [menu]);
 
   if (isLogin) return <>{children}</>;
@@ -161,23 +183,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface focus:px-3 focus:py-2 focus:shadow">Skip to content</a>
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-surface md:flex">
-        <div className="flex items-center gap-2.5 px-4 py-4">
-          <BrandMark />
-          <div className="leading-tight">
-            <div className="text-sm font-semibold">RAG Learning Studio</div>
+      <aside className={clsx("sticky top-0 hidden h-screen shrink-0 flex-col overflow-y-auto border-r border-border bg-surface md:flex studio-sidebar",compactNav?"w-16":"w-56")}>
+        <div className="flex items-center justify-between gap-2 px-3 py-3">
+          {!compactNav&&<><BrandMark />
+          <div className="flex-1 leading-tight">
+            <div className="text-sm font-semibold">RAG</div>
             <div className="text-xs text-dim">retrieval workbench</div>
-          </div>
+          </div></>}<button onClick={()=>setCompactNav(!compactNav)} aria-label={compactNav?"Expand navigation":"Collapse navigation"} aria-expanded={!compactNav} className="grid size-8 shrink-0 place-items-center rounded-md hover:bg-[#223552]">{compactNav?<PanelLeftOpen className="size-4"/>:<PanelLeftClose className="size-4"/>}</button>
         </div>
-        <NavLinks pathname={pathname} onIntent={prefetch} />
+        <NavLinks pathname={pathname} compact={compactNav} onIntent={prefetch} />
       </aside>
 
       {menu && (
-        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+        <div ref={drawer} className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
           <button className="absolute inset-0 bg-black/40" aria-label="Close navigation" onClick={() => setMenu(false)} />
           <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] overflow-y-auto bg-surface shadow-xl">
             <div className="flex items-center justify-between px-4 py-3">
-              <div className="flex items-center gap-2.5"><BrandMark /><span className="text-sm font-semibold">RAG Learning Studio</span></div>
+              <div className="flex items-center gap-2.5"><BrandMark /><span className="text-sm font-semibold">RAG</span></div>
               <button onClick={() => setMenu(false)} aria-label="Close navigation" className="grid size-8 place-items-center rounded-md hover:bg-surface-2"><X className="size-4" /></button>
             </div>
             <NavLinks pathname={pathname} onNavigate={() => setMenu(false)} onIntent={prefetch} />
@@ -185,7 +207,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col" aria-hidden={menu || undefined}>
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-bg/90 px-4 py-2 backdrop-blur">
           <button onClick={() => setMenu(true)} aria-label="Open navigation" aria-expanded={menu}
             className="grid size-8 place-items-center rounded-md border border-border bg-surface hover:bg-surface-2 md:hidden"><Menu className="size-4" /></button>
@@ -210,7 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </header>
-        <main id="main" className="flex-1 p-4 sm:p-5">{children}</main>
+        <main id="main" className="min-w-0 flex-1 p-4 lg:p-5"><Workflow />{children}</main>
       </div>
     </div>
   );

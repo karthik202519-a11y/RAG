@@ -1,6 +1,6 @@
 # Feature matrix
 
-What the RAG Learning Studio can **actually do today**, checked against running code. This file is the
+What RAG can **actually do today**, checked against running code. This file is the
 source of truth: the Method Catalog in the UI is generated from the same registry
 (`backend/studio/registry/`), and a test fails if the registry advertises a chunker that does not exist.
 
@@ -8,8 +8,12 @@ Legend: **Implemented + tested** = runs and has automated tests. **Verified live
 service (Azure OpenAI, Postgres, Qdrant server, MinIO, Redis) or in the browser, without an automated test.
 **Not built** = described, cannot be run.
 
-Counts from the registry (91 methods): **chunking 23 of 23 run; parsers 15 of 23; embedding 8 of 9; vector stores 5 of 11; retrieval 12 of 12; generation 5 of 6; multimodal 6 of 7.** Anything that cannot run says exactly why (a missing server, key or heavy dependency), and hosted-service adapters are marked as tested against recorded responses only.
-Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 16. Tests never call Azure.
+Counts from the registry (93 methods): **chunking 23 of 23 run; parsers 15 of 23; embedding 8 of 9; vector stores 5 of 11; retrieval 14 of 14; generation 5 of 6; multimodal 6 of 7.** Anything that cannot run says exactly why (a missing server, key or heavy dependency), and hosted-service adapters are marked as tested against simulated responses only.
+Automated tests are recorded by the current audit in `BUILD_PROGRESS.md` and the generated JUnit / compatibility reports under `output/`. Historical test counts are not current-suite evidence. Hosted API transports are simulated in automated tests.
+
+## Storage Explorer
+
+Read-only `/storage` shows all 23 application tables with schemas, purpose, benefits, project-scoped examples and relationships. Foreign keys are distinguished from logical IDs/hashes/JSON links. Native storage reads actual Qdrant points, FAISS rows and companion metadata, Chroma records, Lance tables and pgvector SQL rows with actual primary-key/HNSW definitions. Vector IDs link back to source chunks; passwords are redacted and foreign project samples are excluded. Seven tests passed on each application database, covering every real vector store. All five engines and record navigation were also checked in the browser.
 
 ## Platform
 
@@ -18,8 +22,8 @@ Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 
 | Registration, login, JWT sessions, scrypt password hashing, login throttling | Implemented + tested |
 | Workspaces, projects, collections; roles (owner / editor / viewer) enforced in queries | Implemented + tested (breaking the role check fails a test) |
 | Cross-user isolation: unknown and forbidden both return 404 | Implemented + tested for every resource family |
-| Audit events for register, project, document, index and dataset actions | Written; no viewer UI |
-| Alembic migrations (0001-0003) | Implemented + tested on SQLite and PostgreSQL 16 |
+| Audit events for register, project, document, index and dataset actions | Written; scoped samples in Storage Explorer |
+| Alembic migrations (0001-0007) | Implemented + tested on SQLite and PostgreSQL 16 |
 | In-process job queue (thread pool): retry with backoff, dead state, cancel, restart recovery, idempotency | Implemented + tested |
 | Celery + Redis job queue | **Verified live**: API and worker as separate processes, and inside Docker Compose |
 | Local artifact store | Implemented + tested |
@@ -43,7 +47,8 @@ Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 
 | Tags, custom metadata, collections, filters, delete; ingestion dashboard | Implemented + tested |
 | 40 documents in one request | Tested |
 | **10,000-document load test** | **Not run.** No claim of large-scale readiness is made. |
-| Resumable / folder upload, ZIP, images, source code, cloud connectors | Not built |
+| Images and source-code upload | Implemented + tested (see parser and visual content below) |
+| Resumable / folder upload, ZIP, cloud connectors | Not built |
 
 ## Parsers (registry category `parser`)
 
@@ -51,8 +56,9 @@ Automated tests: **167 backend tests**, all passing on SQLite and on PostgreSQL 
 |---|---|
 | PyMuPDF (text, tables, printed pages, sections, header/footer removal, diagram-page flag + PNG) | Implemented; exercised on a 186-page and a 297-page PDF |
 | Plain text, Markdown, DOCX, PPTX (one page per slide), XLSX (one page per sheet), HTML, CSV, JSON, XML | Implemented + tested |
-| **Parser Lab**: PyMuPDF, pdfplumber and pypdf on the same pages side by side, with text, table counts, timings and word-level agreement | Implemented + tested; verified on the handbook (pages 120 to 122: pdfplumber found 6 tables, PyMuPDF 0). Comparison only: ingestion still uses PyMuPDF |
-| Docling, Unstructured, Tika, Tesseract, PaddleOCR, Azure Document Intelligence, AWS Textract, Google Document AI, LlamaParse | Not built |
+| **Parser Lab**: PyMuPDF, pdfplumber and pypdf on the same pages side by side, with text, table counts, timings and word-level agreement | Implemented + tested; verified on the handbook (pages 120 to 122: pdfplumber found 6 tables, PyMuPDF 0). Ingestion also supports selecting pdfplumber, RapidOCR or Azure Document Intelligence |
+| Azure Document Intelligence | Adapter implemented; simulated-response tests only |
+| Docling, Unstructured, Tika, Tesseract, PaddleOCR, AWS Textract, Google Document AI, LlamaParse | Not built |
 
 ## Chunking (registry category `chunking`): all 23 run (2 need the chat model)
 
@@ -74,7 +80,7 @@ Every chunk has exact character offsets, pages, printed pages and section (excep
 |---|---|
 | Azure OpenAI embeddings (`text-embedding-3-small`, 1,536 dims) | **Verified live**; not in automated tests |
 | Offline hash embedder | Implemented + tested; **not semantic**, labelled as a demo |
-| Embedding cache by (provider, model, text) | Implemented + tested; verified live (a 485-chunk rebuild billed 6k tokens, 468 cache hits) |
+| Embedding cache by (provider, model, text), with separate query/document roles for Cohere and Voyage | Implemented + tested; verified live (a 485-chunk rebuild billed 6k tokens, 468 cache hits) |
 | Immutable index versions with a unique collection each; query/index dimension guard | Implemented + tested |
 | Qdrant: embedded mode | Implemented + tested |
 | Qdrant: **server mode** | **Verified live** inside Docker (collection with the right size and distance) |
@@ -91,9 +97,9 @@ Every chunk has exact character offsets, pages, printed pages and section (excep
 | **GraphRAG slice**: a model extracts entities and relations per chunk; anything not found in the chunk text is rejected; communities by modularity; local graph search compared with dense search; interactive graph | Implemented + tested with a fake model; **verified live** on 60 handbook chunks (534 entities, 139 relations, 445 model proposals rejected as not in the text, 332 entities with no relations). Not evaluated for answer quality; no global (community-summary) search |
 | **Vector stores**: Qdrant, FAISS, **Chroma**, **LanceDB**, **pgvector** behind one interface, with one contract test run against all five | Implemented + tested; pgvector tested live in the `pgvector/pgvector:pg16` container |
 | Milvus, Weaviate, Elasticsearch/OpenSearch, Azure AI Search, Pinecone, MongoDB Atlas | Not built: each needs a server or cloud account (reason shown in the catalog) |
-| **Embeddings**: Azure OpenAI, **FastEmbed local semantic models** (BGE default), OpenAI, Ollama, Cohere, Voyage | FastEmbed tested on the real model; the others tested with recorded responses only (no keys or servers here) |
+| **Embeddings**: Azure OpenAI, **FastEmbed local semantic models** (BGE default), OpenAI, Ollama, Cohere, Voyage | FastEmbed tested on the real model; the others tested with simulated responses only (no keys or servers here) |
 | **Cross-encoder reranking** (local, free) beside LLM reranking | Implemented + tested on the real model |
-| **Chat providers**: Azure OpenAI plus `openai:`, `anthropic:`, `gemini:`, `ollama:` prefixed models | Adapters tested with recorded responses only; AWS Bedrock not built |
+| **Chat providers**: Azure OpenAI plus `openai:`, `anthropic:`, `gemini:`, `ollama:` prefixed models | Adapters tested with simulated responses only; AWS Bedrock not built |
 | Streaming answers, persisted answers | Not built |
 
 ## Suggestions (mandatory stage advice)
@@ -151,6 +157,20 @@ Every chunk has exact character offsets, pages, printed pages and section (excep
 
 ## Not started
 
-Pipeline builder (the Retrieval Lab already composes transform, retrieval, rerank and MMR, but there is no visual builder),
-experiment reports and isolated experiment indexes, OpenTelemetry export, context compression, global GraphRAG search with
+OpenTelemetry export, context compression, global GraphRAG search with
 community summaries, the vector stores and parsers listed as not built above, the 10,000-document load test.
+
+
+## Guided workbench, pipeline recipes and controlled experiments (2026-11-05)
+
+| Capability | Current implementation |
+|---|---|
+| Pipeline Builder | Selectable typed stage canvas, four starting templates, all chunkers/providers/stores, document/index reuse, immutable saved versions, validation, background execution, real stage timings and artifacts, cancellation and JSON export |
+| Experiment Studio | Two to eight saved versions, frozen approved-question snapshot, isolated index per case, quality/latency/tokens, paired differences, question drill-down, saved executions and JSON report export |
+| Search methods | Six base retrievers: dense, BM25, TF-IDF, hybrid, local graph, graph + hybrid. Fifteen search recipes expose transforms, MMR, parent/neighbor expansion and both rerankers in one selector |
+| Explanations | Guided explanations default open; method-specific algorithm, advantages, tradeoffs and prerequisites; a complete Learning Guide route |
+| Graph construction | Actual extraction model and counters, retained entity/relation examples with source chunk text; grounding limitations stated explicitly |
+| Embedding construction | Actual embedding input, stored vector preview, model/store/dimension/cache/tokens, and a PCA construction explanation |
+| Advanced answers | Generation and evaluation use the exact transformed/reranked/expanded retrieval output rather than silently repeating base search |
+
+The canvas supports the ordered typed RAG stages; arbitrary user-defined graph nodes or custom executable code are not exposed. Graph extraction in pipeline/experiment runs samples at most 50 chunks, with model calls disclosed in the UI. The seeded example is explicitly synthetic and too small for significance claims.

@@ -5,7 +5,7 @@ import { Providers } from "@/components/providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RAG Learning Studio",
+  title: "RAG",
   description: "A laboratory for building, comparing and understanding retrieval-augmented generation.",
 };
 

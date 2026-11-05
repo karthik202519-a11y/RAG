@@ -53,6 +53,14 @@ def configured_models() -> list[str]:
     return list(dict.fromkeys(first + extra + providers.default_models()))
 
 
+def default_model() -> str:
+    """Prefer the configured Azure deployment, then a configured prefixed provider."""
+    from . import providers
+    if generation_status()[0]:
+        return settings.azure_chat_deployment
+    return next(iter(providers.default_models()), "")
+
+
 def status_for(model: str) -> tuple[bool, str]:
     """Can this model name be used right now? A provider prefix (openai:, anthropic:, gemini:, ollama:) routes elsewhere than Azure."""
     from . import providers
@@ -163,14 +171,14 @@ def answer(db: Session, index: Index, question: str, *, model: str | None = None
            strict: bool = True, temperature: float = 0.0, max_output_tokens: int = 600, context_budget: int = 3000,
            min_score: float | None = None, price_in_per_million: float | None = None,
            price_out_per_million: float | None = None, system_prompt: str | None = None,
-           document_ids: list[str] | None = None, expand: str = "none", neighbors: int = 1) -> dict:
-    model = model or settings.azure_chat_deployment
+           document_ids: list[str] | None = None, expand: str = "none", neighbors: int = 1, retrieved: dict | None = None) -> dict:
+    model = model or default_model()
     ok, why = status_for(model)
     if not ok:
         raise GenerationNotConfigured(why)
 
     t0 = time.perf_counter()
-    ret = retrieval.search(db, index, question, mode, top_k, None, None, document_ids, None, 60, expand, neighbors)
+    ret = retrieved if retrieved is not None else retrieval.search(db, index, question, mode, top_k, None, None, document_ids, None, 60, expand, neighbors)
     retrieval_ms = round((time.perf_counter() - t0) * 1000, 1)
     hits = ret["results"]
     out: dict = {"question": question, "model": model, "mode": mode, "strict": strict, "retrieval": ret}

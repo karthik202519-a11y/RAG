@@ -1,4 +1,4 @@
-# RAG Learning Studio backend. Tested on Python 3.14.
+# RAG backend. Tested on Python 3.14.
 # PyMuPDF is pinned: table detection differs widely between versions
 # (1.28.2 found 359 "tables" in a 297-page handbook; 2.0 + layout found 40).
 pymupdf==2.0

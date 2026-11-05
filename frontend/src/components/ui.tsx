@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import { LearningGuide } from "./learning-guide";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 
@@ -33,9 +34,9 @@ export function Card({ title, actions, children, className, pad = true }: {
   title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; pad?: boolean;
 }) {
   return (
-    <section className={clsx("rounded-lg border border-border bg-surface", className)}>
+    <section className={clsx("min-w-0 rounded-xl border border-border bg-surface", className)}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5">
           <h2 className="text-sm font-semibold">{title}</h2>
           <div className="flex items-center gap-2">{actions}</div>
         </header>
@@ -70,7 +71,7 @@ export function statusTone(s: string): keyof typeof TONES {
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <label className="block space-y-1">
+    <label className="block min-w-0 space-y-1">
       <span className="text-xs font-medium text-dim">{label}</span>
       {children}
       {hint && <span className="block text-xs leading-snug text-dim">{hint}</span>}
@@ -78,7 +79,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   );
 }
 
-const control = "h-9 w-full rounded-md border border-border bg-surface px-2.5 text-sm placeholder:text-dim";
+const control = "h-9 min-w-0 max-w-full w-full rounded-md border border-border bg-surface px-2.5 text-sm placeholder:text-dim";
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={clsx(control, props.className)} />;
 }
@@ -88,7 +89,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
 
 export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3">
+    <div className="rounded-xl border border-border bg-surface px-4 py-3">
       <div className="text-xs text-dim">{label}</div>
       <div className="mt-0.5 font-mono text-2xl font-semibold tabular-nums">{value}</div>
       {sub && <div className="text-xs text-dim">{sub}</div>}
@@ -130,13 +131,16 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <>
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {subtitle && <p className="mt-0.5 max-w-3xl text-sm text-dim">{subtitle}</p>}
+        {subtitle && <p className="mt-1 max-w-5xl text-sm leading-relaxed text-dim">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
+    <LearningGuide />
+    </>
   );
 }
 

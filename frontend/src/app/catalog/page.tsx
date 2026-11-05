@@ -22,7 +22,7 @@ export default function CatalogPage() {
   const current = items.find((m) => m.id === selected) ?? items[0];
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="w-full min-w-0">
       <PageHeader title="Method Catalog" subtitle="Every method the studio knows about, generated from the backend registry. 'Runs for real' means it executes in this backend today; 'Not built yet' methods are described for learning but cannot be run." />
       <ErrorBox error={cat.error} />
       {cat.isLoading ? <Spinner /> : (

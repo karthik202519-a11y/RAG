@@ -36,7 +36,7 @@ export default function ProjectsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full min-w-0">
       <PageHeader title="Projects & Collections" subtitle="A project holds documents, chunking runs and (later) experiments. Collections group documents inside a project." />
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Your projects">

@@ -60,7 +60,7 @@ class FastEmbedEmbedder:
             m = self._models.get(self.model)
             if m is None:
                 from fastembed import TextEmbedding
-                m = self._models[self.model] = TextEmbedding(model_name=self.model, cache_dir=str(settings.data_dir / "models"))
+                m = self._models[self.model] = TextEmbedding(model_name=self.model, cache_dir=str(settings.model_cache_dir))
             return m
 
     def embed(self, texts: list[str]) -> Embedded:
@@ -135,14 +135,14 @@ class CohereEmbedder:
     def status(self) -> tuple[bool, str]:
         return (True, "configured") if settings.cohere_api_key else (False, "Set in .env: COHERE_API_KEY")
 
-    def embed(self, texts: list[str]) -> Embedded:
+    def embed(self, texts: list[str], *, input_type: str = "document") -> Embedded:
         ok, why = self.status()
         if not ok:
             raise NotConfigured(f"Embedding provider 'cohere' is not configured. {why}")
         out, tokens = [], 0
         for i in range(0, len(texts), 96):
             j = _post_json("https://api.cohere.com/v2/embed", {"Authorization": f"Bearer {settings.cohere_api_key}"},
-                           {"model": self.model, "texts": texts[i:i + 96], "input_type": "search_document", "embedding_types": ["float"]}, "Cohere")
+                           {"model": self.model, "texts": texts[i:i + 96], "input_type": "search_query" if input_type == "query" else "search_document", "embedding_types": ["float"]}, "Cohere")
             tokens += int(j.get("meta", {}).get("billed_units", {}).get("input_tokens", 0))
             out.extend(j["embeddings"]["float"])
         return Embedded(_normalize(np.asarray(out, dtype=np.float32)), tokens)
@@ -158,14 +158,14 @@ class VoyageEmbedder:
     def status(self) -> tuple[bool, str]:
         return (True, "configured") if settings.voyage_api_key else (False, "Set in .env: VOYAGE_API_KEY")
 
-    def embed(self, texts: list[str]) -> Embedded:
+    def embed(self, texts: list[str], *, input_type: str = "document") -> Embedded:
         ok, why = self.status()
         if not ok:
             raise NotConfigured(f"Embedding provider 'voyage' is not configured. {why}")
         out, tokens = [], 0
         for i in range(0, len(texts), 64):
             j = _post_json("https://api.voyageai.com/v1/embeddings", {"Authorization": f"Bearer {settings.voyage_api_key}"},
-                           {"model": self.model, "input": texts[i:i + 64], "input_type": "document"}, "Voyage")
+                           {"model": self.model, "input": texts[i:i + 64], "input_type": input_type}, "Voyage")
             tokens += j.get("usage", {}).get("total_tokens", 0)
             out.extend(d["embedding"] for d in sorted(j["data"], key=lambda d: d["index"]))
         return Embedded(_normalize(np.asarray(out, dtype=np.float32)), tokens)

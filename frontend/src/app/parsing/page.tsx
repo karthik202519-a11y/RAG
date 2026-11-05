@@ -56,7 +56,7 @@ export default function ParserLab() {
   const pageNo = r?.pages[view];
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="w-full min-w-0">
       <PageHeader title="Parser Lab" subtitle="Run several PDF parsers on the same pages and see what each one actually returned: text, tables found, time, and how much they agree. Up to 12 pages per run." />
       <div className="mb-4 grid gap-3 rounded-lg border border-border bg-surface p-3 md:grid-cols-[1fr_12rem_auto]">
         <Field label="Document"><Select value={docId} onChange={(e) => setDoc(e.target.value)} aria-label="Document">{pdfs.map((d) => <option key={d.id} value={d.id}>{d.filename}</option>)}</Select></Field>

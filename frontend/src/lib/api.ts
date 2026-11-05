@@ -156,7 +156,7 @@ export type IndexInfo = {
   job: { id: string; status: string; progress: number; stage: string | null; attempts: number; error: string | null } | null;
 };
 export type Contribution = {
-  dense?: { rank: number; score: number }; bm25?: { rank: number; score: number; matched_terms: string[] }; rrf?: number;
+  graph?: { rank: number; score: number }; tfidf?: { rank: number; score: number; matched_terms: string[] }; dense?: { rank: number; score: number }; bm25?: { rank: number; score: number; matched_terms: string[] }; rrf?: number;
 };
 export type SearchHit = {
   final_rank?: number; queries_found_by?: number;

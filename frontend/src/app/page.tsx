@@ -8,7 +8,7 @@ import { api, type EvalDatasetInfo, type IndexInfo, type IngestionStats, type Jo
 import { useProject } from "@/lib/project";
 
 const JOB_LABEL: Record<string, string> = {
-  run_eval: "Evaluation run", build_index: "Index build", describe_figures: "Figure descriptions", ingest_document: "Parse document",
+  run_eval: "Evaluation run", build_index: "Index build", build_graph: "Graph build", embed_pages: "Visual index", describe_figures: "Figure descriptions", ingest_document: "Parse document",
 };
 
 export default function Dashboard() {
@@ -21,13 +21,13 @@ export default function Dashboard() {
 
   if (loading) return <Spinner />;
   if (!project) {
-    return <Empty title="Welcome to RAG Learning Studio">Create a project to begin. <Link className="text-accent underline" href="/projects">Go to Projects</Link></Empty>;
+    return <Empty title="Welcome to RAG">Create a project to begin. <Link className="text-accent underline" href="/projects">Go to Projects</Link></Empty>;
   }
   const s = stats.data;
   const ready = (indexes.data ?? []).filter((i) => i.status === "ready").length;
   const runs = (datasets.data ?? []).reduce((a, d) => a + d.runs, 0);
-  const next = !s?.documents ? { href: "/ingestion", text: "Upload a document" } : !indexes.data?.length ? { href: "/indexes", text: "Build an index" }
-    : !datasets.data?.length ? { href: "/evaluation", text: "Create an evaluation dataset" } : { href: "/retrieval", text: "Ask a question" };
+  const next = !s?.documents ? { href: "/ingestion", text: "Upload a document" } : !ready ? { href: "/indexes", text: "Build an index" }
+    : { href: "/retrieval", text: "Ask a question" };
 
   const steps = [
     { href: "/ingestion", label: "Documents", n: s?.documents, sub: s ? `${fmt.n(s.pages)} pages · ${fmt.n(s.tokens)} tokens` : "" },
@@ -37,10 +37,20 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="w-full min-w-0 space-y-5">
       <PageHeader title={project.name} subtitle={project.description || "Where this project stands, from documents to measured results."}
         actions={<Link href={next.href} className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-3.5 text-sm font-medium text-accent-ink hover:brightness-110">{next.text}<ArrowRight className="size-4" aria-hidden /></Link>} />
-      <ErrorBox error={stats.error} />
+      <ErrorBox error={stats.error ?? indexes.error ?? datasets.error ?? jobs.error} />
+      <section aria-labelledby="start-heading" className="border-y border-border py-5">
+        <h2 id="start-heading" className="text-lg font-semibold">Build understanding, one step at a time</h2>
+        <p className="mt-1 max-w-3xl text-sm text-dim">Upload a source, inspect what was extracted, compare chunks, then build an index. Search the evidence before asking for an answer. Use evaluation to compare your choices.</p>
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+          <Link href="/parsing" className="text-accent underline underline-offset-4">Inspect extraction</Link>
+          <Link href="/chunking" className="text-accent underline underline-offset-4">Compare chunking methods</Link>
+          <Link href="/recommendations" className="text-accent underline underline-offset-4">Get suggestions for this project</Link>
+          <Link href="/settings" className="text-accent underline underline-offset-4">Check provider connections</Link>
+        </div>
+      </section>
 
       <ol className="grid gap-3 md:grid-cols-4" aria-label="Pipeline progress">
         {steps.map((st, i) => (

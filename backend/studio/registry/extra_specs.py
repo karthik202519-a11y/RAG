@@ -182,3 +182,11 @@ for _id, _name, _why in [
     ("llamaparse", "LlamaParse", "Needs a LlamaCloud API key. No adapter written."),
 ]:
     put(id=_id, name=_name, summary=f"{_name} parser.", how_it_works="Not implemented.", status="unavailable", unavailable_reason=_why, **PA)
+
+
+for _id, _name, _summary, _how, _limits in [
+    ("tfidf", "TF-IDF lexical search", "Weighted word matching with cosine similarity; no model call.", "Token counts become log-TF times smoothed IDF weights, L2-normalized. The query uses the same corpus IDF; cosine scores rank matching chunks.", ["Lexical matching does not understand synonyms", "Computed over the index's text chunks"]),
+    ("graph_hybrid", "Graph + hybrid search", "Fuse vector, BM25 and graph evidence using reciprocal rank fusion.", "Finds vector and keyword candidates, follows graph relations from entities named in the query, then adds 1/(60+rank) for each retriever.", ["Requires a built graph", "Graph extraction uses a model and can miss relations"]),
+]:
+    registry.register(MethodSpec(id=_id, category="retrieval", stage="Retrieval", name=_name, summary=_summary, how_it_works=_how,
+        advantages=["Scores and source evidence are inspectable"], disadvantages=_limits, limitations=_limits))

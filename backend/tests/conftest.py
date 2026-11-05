@@ -24,12 +24,22 @@ from studio.config import settings  # noqa: E402
 from studio.jobs import runner  # noqa: E402
 
 
+def ensure_test_database(url: str) -> None:
+    """Guard the destructive schema-reset fixture before opening its target."""
+    if url.startswith("postgresql"):
+        from sqlalchemy.engine import make_url
+        database = (make_url(url).database or "").lower()
+        if not any(marker in database for marker in ("test", "matrix")):
+            raise RuntimeError("STUDIO_TEST_DATABASE_URL must name a dedicated test or matrix database; fixtures reset its public schema.")
+
+
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     """A fresh database, artifact store and job pool for every test."""
     monkeypatch.setattr(settings, "data_dir", tmp_path)
     # STUDIO_TEST_DATABASE_URL runs the suite against a real server (e.g. the Postgres in docker-compose).
     url = os.environ.get("STUDIO_TEST_DATABASE_URL") or f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    ensure_test_database(url)
     monkeypatch.setattr(settings, "database_url", url)
     dbmod.reconfigure(url)
     if url.startswith("postgresql"):

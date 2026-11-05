@@ -28,3 +28,13 @@ documents/
 .idea/
 .DS_Store
 Thumbs.db
+
+# --- local sessions and generated review artifacts ---
+rag.txt
+.impeccable/
+frontend/det.err
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.zip

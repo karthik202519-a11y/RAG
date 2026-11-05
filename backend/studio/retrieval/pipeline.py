@@ -28,10 +28,10 @@ class PipelineError(RuntimeError):
 
 
 def _llm(model: str | None, system: str, user: str, max_tokens: int = 400) -> tuple[str, int]:
-    ok, why = gen.status_for(model or gen.settings.azure_chat_deployment)
+    ok, why = gen.status_for(model or gen.default_model())
     if not ok:
         raise gen_pkg.GenerationNotConfigured(why)
-    res = gen.chat_complete(model or gen.settings.azure_chat_deployment,
+    res = gen.chat_complete(model or gen.default_model(),
                             [{"role": "system", "content": system}, {"role": "user", "content": user}], 0.0, max_tokens)
     return res.text.strip(), res.prompt_tokens + res.completion_tokens
 
@@ -65,7 +65,7 @@ def transform_query(kind: str, question: str, n: int, model: str | None, mode: s
     if kind == "hyde":
         t, tok = _llm(model, "Write a short passage (3-4 sentences) that would answer the question, in the style of a technical "
                              "handbook. State it plainly; do not hedge.", question, 220)
-        if not t or mode == "bm25":
+        if not t or mode in ("bm25", "tfidf"):
             return [orig] + ([{"text": t, "role": "hypothetical_passage", "search": False}] if t else []), tok
         if mode == "dense":
             return [{**orig, "search": False}, {"text": t, "role": "hypothetical_passage", "search": True, "mode": "dense"}], tok
@@ -183,7 +183,7 @@ def run(db: Session, index: Index, question: str, *, mode: str = "dense", top_k:
     # 4. optional diversification
     if mmr_on and fused:
         t0 = time.perf_counter()
-        emb = embed_texts(db, index.provider, [question])
+        emb = embed_texts(db, index.provider, [question], input_type="query", expected_model=index.model)
         qvec = emb.vectors[0]
         before = [h["chunk_id"] for h in fused[:top_k]]
         fused = mmr(index, fused, qvec, max(top_k, rerank_candidates if rerank != "none" else top_k), mmr_lambda)

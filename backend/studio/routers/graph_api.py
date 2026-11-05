@@ -34,13 +34,13 @@ def build_graph(index_id: str, body: BuildIn, user: User = Depends(current_user)
     idx = load_index(db, user, index_id, "editor")
     if idx.status != "ready":
         raise HTTPException(409, f"Index is {idx.status}")
-    ok, why = generation.generation_status()
+    ok, why = generation.status_for(body.model or generation.default_model())
     if not ok:
         raise HTTPException(409, f"Graph extraction needs the chat model. {why}")
     existing = db.get(GraphBuild, idx.id)
     if existing is not None and existing.status in ("queued", "running"):
         raise HTTPException(409, "A graph build is already running for this index")
-    model = body.model or settings.azure_chat_deployment
+    model = body.model or generation.default_model()
     if existing is None:
         existing = GraphBuild(index_id=idx.id)
         db.add(existing)

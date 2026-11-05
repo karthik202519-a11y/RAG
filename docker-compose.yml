@@ -1,4 +1,4 @@
-# RAG Learning Studio - local infrastructure.
+# RAG - local infrastructure.
 #   docker compose up -d            # infra only (postgres, redis, qdrant, minio)
 #   docker compose --profile app up -d --build   # + backend, worker, frontend
 #
@@ -9,7 +9,7 @@ x-backend-env: &backend-env
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-studio}:${POSTGRES_PASSWORD:-studio_dev}@postgres:5432/${POSTGRES_DB:-studio}
   REDIS_URL: redis://redis:6379/0
   QDRANT_URL: http://qdrant:6333
-  PGVECTOR_URL: postgresql://${POSTGRES_USER:-studio}:${POSTGRES_PASSWORD:-studio_dev}@postgres:5432/${POSTGRES_DB:-studio}
+  PGVECTOR_URL: postgresql://${PGVECTOR_USER:-studio}:${PGVECTOR_PASSWORD:-studio_dev}@pgvector:5432/${PGVECTOR_DATABASE:-rag_vectors}
   S3_ENDPOINT: http://minio:9000
   S3_ACCESS_KEY: ${MINIO_ROOT_USER:-studio}
   S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-studio_dev_secret}
@@ -21,6 +21,24 @@ x-backend-env: &backend-env
   AZURE_OPENAI_CHAT_DEPLOYMENT: ${AZURE_OPENAI_CHAT_DEPLOYMENT:-}
   AZURE_OPENAI_CHAT_DEPLOYMENTS: ${AZURE_OPENAI_CHAT_DEPLOYMENTS:-}
   AZURE_OPENAI_VISION_DEPLOYMENT: ${AZURE_OPENAI_VISION_DEPLOYMENT:-}
+  AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: ${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT:-}
+  AZURE_DOCUMENT_INTELLIGENCE_KEY: ${AZURE_DOCUMENT_INTELLIGENCE_KEY:-}
+  FASTEMBED_MODEL: ${FASTEMBED_MODEL:-BAAI/bge-small-en-v1.5}
+  FASTEMBED_RERANK_MODEL: ${FASTEMBED_RERANK_MODEL:-Xenova/ms-marco-MiniLM-L-6-v2}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+  OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_CHAT_MODEL: ${ANTHROPIC_CHAT_MODEL:-claude-haiku-4-5}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_CHAT_MODEL: ${GEMINI_CHAT_MODEL:-gemini-2.0-flash}
+  COHERE_API_KEY: ${COHERE_API_KEY:-}
+  COHERE_EMBEDDING_MODEL: ${COHERE_EMBEDDING_MODEL:-embed-english-v3.0}
+  VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+  VOYAGE_EMBEDDING_MODEL: ${VOYAGE_EMBEDDING_MODEL:-voyage-3}
+  OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+  OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+  OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2}
 
 services:
   postgres:
@@ -33,6 +51,20 @@ services:
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-studio} -d ${POSTGRES_DB:-studio}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pgvector:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${PGVECTOR_USER:-studio}
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:-studio_dev}
+      POSTGRES_DB: ${PGVECTOR_DATABASE:-rag_vectors}
+    ports: ["127.0.0.1:5435:5432"]
+    volumes: [pgvectordata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGVECTOR_USER:-studio} -d ${PGVECTOR_DATABASE:-rag_vectors}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -99,6 +131,7 @@ services:
 
 volumes:
   pgdata:
+  pgvectordata:
   redisdata:
   qdrantdata:
   miniodata:

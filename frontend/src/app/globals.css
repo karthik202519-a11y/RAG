@@ -3,15 +3,15 @@
 /* Design tokens. Light is the default; dark follows the OS or the manual toggle (data-theme). */
 :root {
   color-scheme: light;
-  --bg: #f6f6f3;
+  --bg: #f3f6fc;
   --surface: #ffffff;
-  --surface-2: #f0f0ec;
-  --border: #dcdcd4;
-  --text: #1c1d1a;
-  --text-dim: #5f6158;
-  --accent: #0f766e;
+  --surface-2: #edf2fa;
+  --border: #dce4f1;
+  --text: #17243b;
+  --text-dim: #576780;
+  --accent: #2856c7;
   --accent-ink: #ffffff;
-  --accent-soft: #d9efec;
+  --accent-soft: #e7efff;
   --warn: #9a4608;
   --warn-soft: #fdf0d9;
   --bad: #b42318;
@@ -89,3 +89,20 @@ body { font-family: var(--font-geist-sans), system-ui, sans-serif; font-size: 14
 .seg-gap { color: var(--text-dim); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--bad) 55%, transparent); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Guided workbench: navigation stays distinct from the reading surface. */
+.studio-sidebar { background: #13213a; color: #e7edfa; border-color: #263854; }
+.studio-sidebar .text-dim { color: #aabbd8; }
+.studio-sidebar nav a:not([aria-current]) { color: #d5dff0; }
+.studio-sidebar nav a:not([aria-current]):hover { background: #223552; }
+.studio-sidebar nav a[aria-current] { background: #dce8ff; color: #1745a4; }
+.studio-sidebar summary:hover { background: #223552; }
+.pipeline-canvas { background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 18px 18px; }
+summary { list-style-position: inside; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+main { animation: workbench-enter .25s ease-out; }
+@keyframes workbench-enter { from { opacity: .85; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }

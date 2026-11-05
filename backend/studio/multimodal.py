@@ -94,7 +94,7 @@ def _clip():
     with _lock:
         if "img" not in _models:
             from fastembed import ImageEmbedding, TextEmbedding
-            cache = str(settings.data_dir / "models")
+            cache = str(settings.model_cache_dir)
             _models["img"] = ImageEmbedding(settings.fastembed_clip_image, cache_dir=cache)
             _models["txt"] = TextEmbedding(settings.fastembed_clip_text, cache_dir=cache)
         return _models["img"], _models["txt"]

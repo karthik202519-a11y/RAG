@@ -76,6 +76,11 @@ class Settings:
     azure_di_endpoint: str = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "")
     azure_di_key: str = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "")
 
+    @property
+    def model_cache_dir(self) -> Path:
+        """Share downloaded models across isolated data folders when explicitly configured."""
+        return Path(os.getenv("STUDIO_MODEL_CACHE_DIR") or self.data_dir / "models")
+
     def __post_init__(self) -> None:
         self.data_dir = Path(self.data_dir)
         if not self.database_url:

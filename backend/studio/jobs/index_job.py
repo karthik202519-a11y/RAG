@@ -64,9 +64,9 @@ def build_index(ctx: JobContext) -> None:
     idx = db.get(Index, job.subject_id)
     if idx is None:
         raise PermanentJobError("Index no longer exists")
+    vs = store_for(idx.store)
     if idx.status == "ready" and vs.collection_dim(idx.collection) == idx.dimension:
         return  # idempotent
-    vs = store_for(idx.store)
     cfg = idx.config
     provider = get_provider(idx.provider)
     ok, why = provider.status()

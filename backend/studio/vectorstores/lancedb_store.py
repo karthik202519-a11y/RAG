@@ -56,7 +56,7 @@ def create_collection(name: str, dim: int, metric: str = "cosine") -> None:
         except Exception:
             pass
         schema = pa.schema([pa.field("id", pa.string()), pa.field("document_id", pa.string()), pa.field("ctype", pa.string()),
-                            pa.field("vector", pa.list_(pa.float32(), dim))])
+                            pa.field("vector", pa.list_(pa.float32(), dim))]).with_metadata({b"studio_metric": metric.encode("ascii")})
         db().create_table(name, schema=schema)
         _meta[name] = {"dim": dim, "metric": metric}
 
@@ -65,7 +65,7 @@ def _info(name: str) -> dict:
     if name not in _meta:
         t = _table(name)
         dim = t.schema.field("vector").type.list_size
-        _meta[name] = {"dim": dim, "metric": "cosine"}
+        _meta[name] = {"dim": dim, "metric": (t.schema.metadata or {}).get(b"studio_metric", b"cosine").decode("ascii")}
     return _meta[name]
 
 

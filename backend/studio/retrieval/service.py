@@ -3,6 +3,8 @@
 Every result reports what each retriever contributed (rank and score), so ranking is explainable from
 observable numbers rather than a generated rationale.
 """
+import math
+from collections import Counter
 import re
 import threading
 import time
@@ -20,7 +22,7 @@ from .expand import expand_results
 from ..vectorstores import store_for
 
 TOKEN_RE = re.compile(r"[a-z0-9]+(?:[.\-][a-z0-9]+)*")
-MODES = ("dense", "bm25", "hybrid")
+MODES = ("dense", "bm25", "hybrid", "tfidf", "graph", "graph_hybrid")
 
 
 class DimensionMismatch(ProviderError):
@@ -85,6 +87,27 @@ def _bm25_search(db: Session, index_id: str, query: str, limit: int, document_id
     return [(e.ids[i], float(scores[i]), [t for t in dict.fromkeys(q) if t in e.tokens[i]]) for i in order], q
 
 
+def _tfidf_search(db, index_id, query, limit, document_ids, types):
+    rows = db.scalars(select(IndexChunk).where(IndexChunk.index_id == index_id).order_by(IndexChunk.id)).all()
+    counts = [Counter(tokenize(r.text)) for r in rows]
+    df = Counter(w for c in counts for w in c)
+    idf = {w: math.log((1 + len(rows)) / (1 + n)) + 1 for w, n in df.items()}
+    def vector(c):
+        v = {w: (1 + math.log(n)) * idf[w] for w, n in c.items() if w in idf}
+        norm = math.sqrt(sum(x*x for x in v.values())) or 1
+        return {w: x/norm for w, x in v.items()}
+    q = vector(Counter(tokenize(query)))
+    scored = []
+    for r, c in zip(rows, counts):
+        if document_ids and r.document_id not in document_ids or types and r.ctype not in types:
+            continue
+        v = vector(c)
+        score = sum(x * v.get(w, 0) for w, x in q.items())
+        if score > 0:
+            scored.append((r.id, score, [w for w in q if w in c]))
+    return sorted(scored, key=lambda h: (-h[1], h[0]))[:limit], tokenize(query)
+
+
 def search(db: Session, index: Index, query: str, mode: str = "dense", top_k: int = 5, candidates: int | None = None,
            score_threshold: float | None = None, document_ids: list[str] | None = None,
            types: list[str] | None = None, rrf_k: int = 60, expand: str = "none", neighbors: int = 1) -> dict:
@@ -97,9 +120,9 @@ def search(db: Session, index: Index, query: str, mode: str = "dense", top_k: in
     info: dict = {"mode": mode}
 
     dense: list = []
-    if mode in ("dense", "hybrid"):
+    if mode in ("dense", "hybrid", "graph_hybrid"):
         t0 = time.perf_counter()
-        emb = embed_texts(db, index.provider, [query])
+        emb = embed_texts(db, index.provider, [query], input_type="query", expected_model=index.model)
         timings["embed_query_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         qv = emb.vectors[0]
         if len(qv) != index.dimension:
@@ -113,28 +136,46 @@ def search(db: Session, index: Index, query: str, mode: str = "dense", top_k: in
         timings["vector_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
 
     kw: list = []
-    if mode in ("bm25", "hybrid"):
+    if mode in ("bm25", "hybrid", "tfidf", "graph_hybrid"):
         t0 = time.perf_counter()
-        kw, qtoks = _bm25_search(db, index.id, query, cand, document_ids, types)
-        timings["bm25_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        kw, qtoks = (_tfidf_search if mode == "tfidf" else _bm25_search)(db, index.id, query, cand, document_ids, types)
+        timings["tfidf_ms" if mode == "tfidf" else "bm25_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         info["query_terms"] = list(dict.fromkeys(qtoks))
 
+    graph_hits = []
+    if mode in ("graph", "graph_hybrid"):
+        from ..models import GraphBuild
+        from ..graph import graph_search
+        build = db.get(GraphBuild, index.id)
+        if build is None or build.status != "ready":
+            raise ValueError("Build this index's knowledge graph in GraphRAG Explorer before graph search.")
+        t0 = time.perf_counter()
+        graph = graph_search(db, index.id, query, cand, 2)
+        graph_hits = graph["results"]
+        allowed = {r.id for r in db.scalars(select(IndexChunk).where(IndexChunk.index_id == index.id))
+                   if (not document_ids or r.document_id in document_ids) and (not types or r.ctype in types)}
+        graph_hits = [h for h in graph_hits if h["chunk_id"] in allowed]
+        info["graph"] = {k: v for k, v in graph.items() if k != "results"}
+        timings["graph_search_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+    lexical = "tfidf" if mode == "tfidf" else "bm25"
     parts: dict[str, dict] = {}
     for rank, h in enumerate(dense, 1):
         parts.setdefault(h.id, {})["dense"] = {"rank": rank, "score": round(h.score, 5)}
     for rank, (cid, s, matched) in enumerate(kw, 1):
-        parts.setdefault(cid, {})["bm25"] = {"rank": rank, "score": round(s, 4), "matched_terms": matched}
-    if mode == "hybrid":
+        parts.setdefault(cid, {})[lexical] = {"rank": rank, "score": round(s, 4), "matched_terms": matched}
+    for rank, h in enumerate(graph_hits, 1):
+        parts.setdefault(h["chunk_id"], {})["graph"] = {"rank": rank, "score": h["score"], "via": h.get("via", [])}
+    if mode in ("hybrid", "graph_hybrid"):
         for p in parts.values():
-            p["rrf"] = round(sum(1.0 / (rrf_k + p[m]["rank"]) for m in ("dense", "bm25") if m in p), 6)
+            p["rrf"] = round(sum(1.0 / (rrf_k + p[m]["rank"]) for m in ("dense", "bm25", "graph") if m in p), 6)
         key = lambda cid: -parts[cid]["rrf"]  # noqa: E731
     elif mode == "dense":
         key = lambda cid: parts[cid]["dense"]["rank"]  # noqa: E731
     else:
-        key = lambda cid: parts[cid]["bm25"]["rank"]  # noqa: E731
+        key = lambda cid: parts[cid]["graph" if mode == "graph" else lexical]["rank"]  # noqa: E731
     ordered = sorted(parts, key=key)
     if score_threshold is not None:
-        gate = "dense" if mode in ("dense", "hybrid") else "bm25"
+        gate = "dense" if mode in ("dense", "hybrid", "graph_hybrid") else ("graph" if mode == "graph" else lexical)
         ordered = [c for c in ordered if gate in parts[c] and parts[c][gate]["score"] >= score_threshold]
     ordered = ordered[:top_k * 3 if expand == "parent" else top_k]  # parents collapse several children, so look further
 
@@ -142,7 +183,7 @@ def search(db: Session, index: Index, query: str, mode: str = "dense", top_k: in
     results = []
     for rank, cid in enumerate(ordered, 1):
         r, p = rows[cid], parts[cid]
-        score = p["rrf"] if mode == "hybrid" else (p["dense"]["score"] if mode == "dense" else p["bm25"]["score"])
+        score = p["rrf"] if mode in ("hybrid", "graph_hybrid") else p["dense" if mode == "dense" else "graph" if mode == "graph" else lexical]["score"]
         results.append({
             "rank": rank, "chunk_id": r.id, "score": score, "contributions": p,
             "index_id": r.index_id, "parent_id": r.parent_id,

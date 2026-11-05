@@ -423,11 +423,11 @@ def contextual(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
     from ..generation import service as gen
     from .contextual import situate
 
-    ok, why = gen.generation_status()
+    ok, why = gen.status_for(p["model"] or gen.default_model())
     if not ok:
         raise ValueError(f"Contextual chunking needs the chat model. {why}")
     base, _ = recursive(canon, {"size": p["size"], "overlap": p["overlap"], "unit": "tokens", "tokenizer": p["tokenizer"]})
-    model = p["model"] or settings.azure_chat_deployment
+    model = p["model"] or gen.default_model()
     limit = len(base) if p["max_chunks"] == 0 else min(len(base), p["max_chunks"])
     section = lambda c: canon.section_at(c["start"], c["end"])  # noqa: E731
     name = canon.pages[0].get("doc", "document") if canon.pages else "document"
@@ -469,12 +469,12 @@ def proposition(canon: Canon, p: dict) -> tuple[list[Cut], list[str]]:
     from ..config import settings
     from ..generation import service as gen
 
-    ok, why = gen.generation_status()
+    ok, why = gen.status_for(p["model"] or gen.default_model())
     if not ok:
         raise ValueError(f"Proposition chunking needs the chat model. {why}")
     base, _ = recursive(canon, {"size": p["source_size"], "overlap": 0, "unit": "tokens", "tokenizer": p["tokenizer"]})
     limit = len(base) if p["max_passages"] == 0 else min(len(base), p["max_passages"])
-    model = p["model"] or settings.azure_chat_deployment
+    model = p["model"] or gen.default_model()
 
     def one(i: int):
         c = base[i]

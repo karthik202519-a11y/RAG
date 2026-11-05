@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import Link from "next/link";
+import { Construction } from "@/components/construction";
 import { useMemo, useState } from "react";
 import { ProjectionPlot } from "@/components/lazy-charts";
 import { SERIES_COLORS } from "@/components/charts-colors";
@@ -46,9 +47,10 @@ export default function EmbeddingExplorer() {
   const idx = ready.find((i) => i.id === indexId);
 
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="w-full min-w-0">
       <PageHeader title="Embedding Explorer"
         subtitle="Each chunk is stored as one vector. Here is what those vectors look like, and how different similarity measures score them. Nothing here is a made-up illustration: it is read from your index." />
+      <Construction indexId={indexId} kind="embeddings" />
       <div className="mb-4 grid gap-3 rounded-lg border border-border bg-surface p-3 md:grid-cols-[1fr_auto_auto_auto]">
         <Field label="Index"><Select value={indexId} onChange={(ev) => { setIdx(ev.target.value); setPicked([]); }} aria-label="Index">
           {ready.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</Select></Field>
@@ -58,12 +60,12 @@ export default function EmbeddingExplorer() {
       </div>
       <ErrorBox error={explore.error} />
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_26rem]">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <Card title={e ? `${e.sampled} of ${e.total_chunks} chunks, projected from ${e.dimension} dimensions to 2` : "Projection"}>
           {explore.isLoading ? <Spinner label="Projecting" /> : e && (
             <>
               <p className="mb-2 rounded bg-warn-soft px-2 py-1 text-xs text-warn">{e.warning}</p>
-              <div className="h-[28rem]" aria-label="Scatter plot of chunk vectors projected to two dimensions">
+              <div className="h-[min(55vh,28rem)]" aria-label="Scatter plot of chunk vectors projected to two dimensions">
                 <ProjectionPlot points={e.points} files={files} explained={e.explained_variance[0]} selected={picked.map((x) => x.chunk_id)} onToggle={toggle} />
               </div>
               <div className="mt-2 flex flex-wrap gap-3 text-xs">{files.map((f, i) => <span key={f} className="flex items-center gap-1"><span className="size-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />{f}</span>)}</div>

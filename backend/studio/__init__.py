@@ -1,3 +1,3 @@
-"""RAG Learning Studio backend."""
+"""RAG backend."""
 
 __version__ = "0.2.0"

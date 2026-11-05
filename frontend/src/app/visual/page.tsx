@@ -105,7 +105,7 @@ export default function VisualLab() {
   if (!project) return <Empty title="No project selected"><Link className="text-accent underline" href="/projects">Create a project first</Link></Empty>;
   if (pdfs.length === 0) return <Empty title="No PDF yet">Upload a PDF in <Link className="text-accent underline" href="/ingestion">Document Ingestion</Link> first.</Empty>;
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full min-w-0">
       <PageHeader title="Visual Lab" subtitle="Work with what is not text: cut figures out of pages, have a vision model read a chart into a table, and find pages by how they look." />
       <div className="mb-4 grid gap-3 rounded-lg border border-border bg-surface p-3 md:grid-cols-[1fr_auto]">
         <Field label="Document"><Select value={docId} onChange={(e) => setDoc(e.target.value)} aria-label="Document">{pdfs.map((d) => <option key={d.id} value={d.id}>{d.filename}</option>)}</Select></Field>

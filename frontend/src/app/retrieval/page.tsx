@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { GitCompare, MessageSquareText, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { MethodGuide } from "@/components/learning-guide";
 import { AnswerPanel } from "@/components/answer-panel";
 import { ChunkText } from "@/components/rich-text";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
@@ -12,21 +13,44 @@ import { SourcePanel, type SourceRef } from "@/components/source-panel";
 import { api, type AnswerResponse, type Doc, type IndexInfo, type Providers, type SearchHit, type SearchResponse } from "@/lib/api";
 import { useProject } from "@/lib/project";
 
-type Mode = "dense" | "bm25" | "hybrid";
+type Mode = "dense" | "bm25" | "hybrid" | "tfidf" | "graph" | "graph_hybrid";
 const MODES: { id: Mode; label: string; blurb: string }[] = [
+  { id: "tfidf", label: "TF-IDF (weighted words)", blurb: "Cosine similarity over word weights; no model call." },
+  { id: "graph", label: "Graph (entity relations)", blurb: "Follow relations from entities named in your question. Needs a built graph." },
+  { id: "graph_hybrid", label: "Graph + hybrid", blurb: "Fuse vector, keyword and graph ranks. Needs a built graph." },
   { id: "dense", label: "Dense (vector)", blurb: "Matches meaning. Embeds the question and finds the nearest chunk vectors." },
   { id: "bm25", label: "BM25 (keyword)", blurb: "Matches words. Best for exact terms, codes and acronyms." },
   { id: "hybrid", label: "Hybrid (RRF)", blurb: "Runs both and merges ranks: score = Σ 1/(k + rank)." },
 ];
 
+const PRESETS=[
+  {id:"dense",label:"Dense vector search",mode:"dense",guide:"dense"},
+  {id:"bm25",label:"BM25 keyword search",mode:"bm25",guide:"bm25"},
+  {id:"tfidf",label:"TF-IDF weighted keyword search",mode:"tfidf",guide:"tfidf"},
+  {id:"hybrid",label:"Hybrid vector + BM25",mode:"hybrid",guide:"hybrid"},
+  {id:"rewrite",label:"Query rewriting + hybrid",mode:"hybrid",transform:"rewrite",guide:"query_rewrite"},
+  {id:"multi_query",label:"Multi-query + fusion",mode:"hybrid",transform:"multi_query",guide:"multi_query"},
+  {id:"hyde",label:"HyDE hypothetical passage",mode:"dense",transform:"hyde",guide:"hyde"},
+  {id:"decompose",label:"Question decomposition",mode:"hybrid",transform:"decompose",guide:"decompose"},
+  {id:"mmr",label:"MMR diverse results",mode:"dense",mmr:true,guide:"mmr"},
+  {id:"parent",label:"Parent-document retrieval",mode:"dense",expand:"parent",guide:"parent_document"},
+  {id:"neighbors",label:"Neighbor expansion",mode:"hybrid",expand:"neighbors",guide:"hybrid"},
+  {id:"cross_encoder",label:"Local cross-encoder reranking",mode:"hybrid",rerank:"cross_encoder",guide:"rerank_cross_encoder"},
+  {id:"llm",label:"LLM reranking",mode:"hybrid",rerank:"llm",guide:"rerank_llm"},
+  {id:"graph",label:"Local GraphRAG search",mode:"graph",guide:"graph_retrieval"},
+  {id:"graph_hybrid",label:"Graph + vector + BM25 fusion",mode:"graph_hybrid",guide:"graph_hybrid"},
+] as const;
+
 function Contributions({ h, mode }: { h: SearchHit; mode: string }) {
   const c = h.contributions;
   return (
     <div className="flex flex-wrap gap-1.5 text-xs">
-      {h.rerank && <Badge tone={h.rerank.moved > 0 ? "good" : h.rerank.moved < 0 ? "bad" : "neutral"} title="Rank before and after the LLM reranker, and its 0-10 score">
+      {h.rerank && <Badge tone={h.rerank.moved > 0 ? "good" : h.rerank.moved < 0 ? "bad" : "neutral"} title="Rank before and after reranking; local cross-encoder scores are not probabilities">
         rerank {h.rerank.before_rank}→{h.rerank.after_rank} · {h.rerank.method === "cross_encoder" ? `cross-encoder ${h.rerank.score}` : `LLM ${h.rerank.score}/10`}</Badge>}
       {h.mmr && <Badge title="Relevance to the query, and similarity to the already-selected results">mmr rel {h.mmr.relevance} · overlap {h.mmr.max_similarity_to_selected}</Badge>}
       {h.queries_found_by != null && h.queries_found_by > 1 && <Badge tone="accent">found by {h.queries_found_by} queries</Badge>}
+      {c.tfidf&&<Badge>TF-IDF #{c.tfidf.rank} ? {c.tfidf.score.toFixed(3)}</Badge>}
+      {c.graph&&<Badge>Graph #{c.graph.rank} ? {c.graph.score.toFixed(3)}</Badge>}
       {c.dense && <Badge tone="accent" title="Rank and cosine similarity from the vector search">dense #{c.dense.rank} · cos {c.dense.score.toFixed(3)}</Badge>}
       {c.bm25 && <Badge tone="warn" title="Rank and BM25 score from the keyword search">bm25 #{c.bm25.rank} · {c.bm25.score.toFixed(2)}</Badge>}
       {c.bm25 && c.bm25.matched_terms.length > 0 && <Badge title="Query terms found in this chunk">matched: {c.bm25.matched_terms.join(", ")}</Badge>}
@@ -44,8 +68,9 @@ export default function RetrievalLab() {
 
   const [indexState, setIndexId] = useState<string | null>(null);
   const wanted = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("index");
-  const indexId = indexState ?? ready.find((i) => i.id === wanted)?.id ?? ready[0]?.id ?? "";
+  const indexId = ready.find((i) => i.id === indexState)?.id ?? ready.find((i) => i.id === wanted)?.id ?? ready[0]?.id ?? "";
 
+  const graphInfo=useQuery({queryKey:["retrieval-graph",indexId],enabled:!!indexId,queryFn:()=>api<{build:{status:string}|null}>(`/indexes/${indexId}/graph`)});
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<Mode>("dense");
   const [topK, setTopK] = useState(5);
@@ -78,18 +103,20 @@ export default function RetrievalLab() {
   const [rerank, setRerank] = useState("none");
   const [mmrOn, setMmrOn] = useState(false);
   const [mmrLambda, setMmrLambda] = useState(0.6);
+  const [expand, setExpand] = useState("none");
+  const [neighbors, setNeighbors] = useState(1);
   const advanced = transform !== "none" || rerank !== "none" || mmrOn;
 
   const body = (m: Mode) => ({
-    query, mode: m, top_k: topK, candidates: m === "hybrid" ? candidates : null, rrf_k: rrfK,
+    query, expand, neighbors, mode: m, top_k: topK, candidates: m === "hybrid" ? candidates : null, rrf_k: rrfK,
     score_threshold: threshold === "" ? null : Number(threshold),
     document_ids: docFilter ? [docFilter] : null, types: typeFilter ? [typeFilter] : null,
   });
   const run = useMutation({
     mutationFn: () => advanced
       ? api<SearchResponse>(`/indexes/${indexId}/retrieve`, { method: "POST", json: {
-          query, mode, top_k: topK, transform, rerank, mmr: mmrOn, mmr_lambda: mmrLambda, rrf_k: rrfK,
-          llm_model: gen?.default_model ?? null, rerank_candidates: Math.max(topK, 15),
+          query, expand, neighbors, mode, top_k: topK, transform, rerank, mmr: mmrOn, mmr_lambda: mmrLambda, rrf_k: rrfK,
+          llm_model: model || null, rerank_candidates: Math.max(topK, 15),
           score_threshold: threshold === "" ? null : Number(threshold),
           document_ids: docFilter ? [docFilter] : null, types: typeFilter ? [typeFilter] : null } })
       : api<SearchResponse>(`/indexes/${indexId}/search`, { method: "POST", json: body(mode) }),
@@ -98,15 +125,16 @@ export default function RetrievalLab() {
   const ask = useMutation({
     mutationFn: () => api<AnswerResponse>(`/indexes/${indexId}/answer`, {
       method: "POST",
-      json: { question: query, model, mode, top_k: topK, strict, max_output_tokens: maxOut, context_budget: budget,
+      json: { question: query, model, mode, expand, neighbors, transform, rerank, mmr: mmrOn, top_k: topK, strict, max_output_tokens: maxOut, context_budget: budget,
         min_score: abstainBelow === "" ? null : Number(abstainBelow), document_ids: docFilter ? [docFilter] : null },
     }),
     onSuccess: () => setPicked(null),
   });
   const compare = useMutation({
     mutationFn: async () => {
-      const out: Record<Mode, SearchResponse> = {} as Record<Mode, SearchResponse>;
-      for (const m of ["dense", "bm25", "hybrid"] as Mode[]) out[m] = await api<SearchResponse>(`/indexes/${indexId}/search`, { method: "POST", json: body(m) });
+      const out: Partial<Record<Mode, SearchResponse>> = {};
+      const modes: Mode[] = graphInfo.data?.build?.status === "ready" ? ["dense", "bm25", "tfidf", "hybrid", "graph", "graph_hybrid"] : ["dense", "bm25", "tfidf", "hybrid"];
+      for (const m of modes) out[m] = await api<SearchResponse>(`/indexes/${indexId}/search`, { method: "POST", json: body(m) });
       return out;
     },
   });
@@ -120,11 +148,13 @@ export default function RetrievalLab() {
   const cmp = compare.data;
   const ans = ask.data;
   const canRun = query.trim().length > 0 && !!indexId;
+  const preset=PRESETS.find(p=>p.mode===mode&&("transform" in p?p.transform:"none")===transform&&("rerank" in p?p.rerank:"none")===rerank&&("mmr" in p?p.mmr:false)===mmrOn&&("expand" in p?p.expand:"none")===expand);
 
   return (
-    <div className="mx-auto max-w-[1500px]">
+    <div className="w-full min-w-0">
       <PageHeader title="Retrieval Lab" subtitle="Ask a question and see which chunks come back, what each retriever contributed, and where the text lives in the source document." />
-      <div className="grid gap-5 xl:grid-cols-[22rem_minmax(0,1fr)]">
+      <ErrorBox error={indexes.error ?? docs.error ?? providers.error} />
+      <div className="grid gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
         <div className="space-y-4">
           <Card title="Query">
             <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (canRun) { setPicked(null); compare.reset(); ask.reset(); run.mutate(); } }}>
@@ -140,12 +170,19 @@ export default function RetrievalLab() {
                   onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && canRun) run.mutate(); }} />
               </Field>
               <p className="-mt-2 text-xs text-dim">Press <kbd className="rounded border border-border px-1 font-mono">/</kbd> to focus, <kbd className="rounded border border-border px-1 font-mono">Ctrl</kbd>+<kbd className="rounded border border-border px-1 font-mono">Enter</kbd> to search.</p>
-              <fieldset>
+              <Field label="Search recipe" hint="Choose a complete method, then expand advanced controls to combine stages.">
+                <Select aria-label="Search recipe" value={preset?.id||"custom"} onChange={e=>{const p=PRESETS.find(p=>p.id===e.target.value);if(p){setMode(p.mode);setTransform("transform" in p?p.transform:"none");setRerank("rerank" in p?p.rerank:"none");setMmrOn("mmr" in p?p.mmr:false);setExpand("expand" in p?p.expand:"none");}}}>
+                  <option value="custom">Custom combination</option>{PRESETS.map(p=><option key={p.id} value={p.id} disabled={(p.id==="parent"&&ready.find(i=>i.id===indexId)?.chunking.method!=="parent_child")||(p.mode.startsWith("graph")&&graphInfo.data?.build?.status!=="ready")}>{p.label}{p.mode.startsWith("graph")&&graphInfo.data?.build?.status!=="ready"?" ? build graph first":""}</option>)}
+                </Select>
+              </Field>
+              <MethodGuide id={preset?.guide||mode}/>
+              <details><summary className="cursor-pointer text-sm font-medium">Search options & filters</summary>
+              <fieldset className="mt-3">
                 <legend className="mb-1 text-xs font-medium text-dim">Retrieval method</legend>
                 <div className="space-y-1">
                   {MODES.map((m) => (
                     <label key={m.id} className={clsx("flex cursor-pointer gap-2 rounded-md border px-2.5 py-1.5 text-sm", mode === m.id ? "border-accent bg-accent-soft" : "border-border")}>
-                      <input type="radio" name="mode" className="mt-1" checked={mode === m.id} onChange={() => setMode(m.id)} />
+                      <input type="radio" name="mode" className="mt-1" disabled={m.id.startsWith("graph")&&graphInfo.data?.build?.status!=="ready"} checked={mode === m.id} onChange={() => setMode(m.id)} />
                       <span><span className="font-medium">{m.label}</span><span className="block text-xs text-dim">{m.blurb}</span></span>
                     </label>
                   ))}
@@ -172,16 +209,25 @@ export default function RetrievalLab() {
                   </Select>
                 </Field>
               </div>
+              </details>
               <div className="flex gap-2">
                 <Button type="submit" variant="primary" className="flex-1" loading={run.isPending} disabled={!canRun}><Search className="size-4" aria-hidden /> Search</Button>
                 <Button type="button" loading={compare.isPending} disabled={!canRun} onClick={() => { run.reset(); ask.reset(); setPicked(null); compare.mutate(); }}>
                   <GitCompare className="size-4" aria-hidden /> Compare modes
                 </Button>
               </div>
+              {gen?.configured && (
+                <Button type="button" variant="secondary" className="w-full" loading={ask.isPending} disabled={!canRun}
+                  onClick={() => { run.reset(); compare.reset(); setPicked(null); ask.mutate(); }}>
+                  <MessageSquareText className="size-4" aria-hidden /> Ask with citations
+                </Button>
+              )}
               <ErrorBox error={run.error ?? compare.error ?? ask.error} />
             </form>
           </Card>
-          <Card title="Advanced retrieval (optional)">
+          <details className="rounded-lg border border-border bg-surface p-4">
+            <summary className="cursor-pointer text-sm font-semibold">Advanced retrieval and context (optional)</summary>
+            <div className="mt-3">
             <div className="space-y-3">
               <Field label="Query transformation" hint="Rewrites or expands the question before searching. Uses the chat model (costs tokens).">
                 <Select value={transform} onChange={(e) => setTransform(e.target.value)} aria-label="Query transformation">
@@ -190,11 +236,17 @@ export default function RetrievalLab() {
                   <option value="decompose">Decompose (sub-questions)</option>
                 </Select>
               </Field>
-              <Field label="Reranking" hint="The chat model scores each candidate 0-10 and reorders. Original scores are kept.">
+              <Field label="Reranking" hint="The local cross-encoder compares the question with each passage. LLM reranking uses a chat provider. Both keep the original search scores.">
                 <Select value={rerank} onChange={(e) => setRerank(e.target.value)} aria-label="Reranking">
                   <option value="none">None</option><option value="cross_encoder">Cross-encoder (local, free)</option><option value="llm">LLM reranker</option>
                 </Select>
               </Field>
+              <Field label="Context expansion" hint="Neighbors include adjacent chunks. Parent passages require a parent-child index.">
+                <Select aria-label="Context expansion" value={expand} onChange={(e) => setExpand(e.target.value)}>
+                  <option value="none">Matched chunks only</option><option value="neighbors">Include neighboring chunks</option><option value="parent" disabled={ready.find((i) => i.id === indexId)?.chunking.method !== "parent_child"}>Include parent passages</option>
+                </Select>
+              </Field>
+              {expand === "neighbors" && <Field label="Neighbors on each side"><Input type="number" min={1} max={3} value={neighbors} onChange={(e) => setNeighbors(Number(e.target.value))} /></Field>}
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" className="mt-1" checked={mmrOn} onChange={(e) => setMmrOn(e.target.checked)} />
                 <span>Diversify results (MMR)<span className="block text-xs text-dim">Skip near-duplicate chunks. No LLM needed.</span></span>
@@ -204,8 +256,11 @@ export default function RetrievalLab() {
               </Field>}
               {(transform !== "none" || rerank === "llm") && !gen?.configured && <p className="text-xs text-warn">These options need the chat model: {gen?.detail}</p>}
             </div>
-          </Card>
-          <Card title="Answer with citations">
+            </div>
+          </details>
+          <details className="rounded-lg border border-border bg-surface p-4">
+            <summary className="cursor-pointer text-sm font-semibold">Answer settings (optional)</summary>
+            <div className="mt-3">
             {!gen?.configured ? <p className="text-sm text-dim">Not available: {gen?.detail ?? "checking…"}</p> : (
               <div className="space-y-3">
                 <Field label="Chat model (deployment)">
@@ -224,13 +279,11 @@ export default function RetrievalLab() {
                 <Field label="Refuse without asking the model below score" hint="Optional, dense cosine. Saves tokens on off-topic questions.">
                   <Input type="number" step="0.05" value={abstainBelow} onChange={(e) => setAbstainBelow(e.target.value)} placeholder="none" />
                 </Field>
-                <Button type="button" variant="primary" className="w-full" loading={ask.isPending} disabled={!canRun}
-                  onClick={() => { run.reset(); compare.reset(); setPicked(null); ask.mutate(); }}>
-                  <MessageSquareText className="size-4" aria-hidden /> Ask with citations
-                </Button>
+
               </div>
             )}
-          </Card>
+            </div>
+          </details>
           {res?.info.query_embedding && (
             <Card title="Query embedding">
               <dl className="space-y-1 font-mono text-xs">
@@ -247,7 +300,7 @@ export default function RetrievalLab() {
         </div>
 
         <div className="min-w-0 space-y-4">
-          {!res && !cmp && !ans && !run.isPending && !compare.isPending && !ask.isPending && <Empty title="Nothing searched yet">Type a question and press <strong>Search</strong>, <strong>Compare modes</strong> to see all three side by side, or <strong>Ask with citations</strong> for a grounded answer.</Empty>}
+          {!res && !cmp && !ans && !run.isPending && !compare.isPending && !ask.isPending && <Empty title="Nothing searched yet">Type a question and press <strong>Search</strong>, <strong>Compare modes</strong> to compare the available base retrievers side by side, or <strong>Ask with citations</strong> for a grounded answer.</Empty>}
           {(run.isPending || compare.isPending) && <Spinner label="Searching" />}
           {ask.isPending && <Spinner label="Retrieving passages and asking the model" />}
           {ans && <AnswerPanel r={ans} onOpen={setPicked} indexId={indexId} />}
@@ -301,17 +354,17 @@ export default function RetrievalLab() {
   );
 }
 
-function CompareModes({ cmp, onPick }: { cmp: Record<Mode, SearchResponse>; onPick: (h: SearchHit) => void }) {
+function CompareModes({ cmp, onPick }: { cmp: Partial<Record<Mode, SearchResponse>>; onPick: (h: SearchHit) => void }) {
   const seen: Record<string, Mode[]> = {};
-  (Object.keys(cmp) as Mode[]).forEach((m) => cmp[m].results.forEach((h) => { (seen[h.chunk_id] ??= []).push(m); }));
+  (Object.keys(cmp) as Mode[]).forEach((m) => cmp[m]?.results.forEach((h) => { (seen[h.chunk_id] ??= []).push(m); }));
   return (
-    <Card title="Same question, three retrievers">
+    <Card title={`Same question, ${Object.keys(cmp).length} retrievers`}>
       <div className="grid gap-3 lg:grid-cols-3">
-        {MODES.map((m) => (
+        {MODES.filter(m => cmp[m.id]).map((m) => (
           <div key={m.id}>
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-dim">{m.label}</h3>
             <ol className="space-y-1.5">
-              {cmp[m.id].results.map((h) => {
+              {cmp[m.id]!.results.map((h) => {
                 const also = seen[h.chunk_id].filter((x) => x !== m.id);
                 return (
                   <li key={h.chunk_id}>
@@ -323,7 +376,7 @@ function CompareModes({ cmp, onPick }: { cmp: Record<Mode, SearchResponse>; onPi
                   </li>
                 );
               })}
-              {cmp[m.id].results.length === 0 && <li className="text-xs text-dim">No results.</li>}
+              {cmp[m.id]!.results.length === 0 && <li className="text-xs text-dim">No results.</li>}
             </ol>
           </div>
         ))}

@@ -123,9 +123,9 @@ def run_job(job_id: str) -> None:
             job = db.get(Job, job_id)
             job.error = f"{type(e).__name__}: {e}"[:2000]
             if job.attempts >= job.max_attempts or isinstance(e, PermanentJobError):
+                _on_dead(db, job, job.error, traceback.format_exc())
                 job.status, job.finished_at = "dead", datetime.now(timezone.utc)
                 db.commit()
-                _on_dead(job_id, job.error, traceback.format_exc())
             else:
                 job.status = "queued"
                 db.commit()
@@ -141,13 +141,12 @@ class PermanentJobError(Exception):
     """Raise from a handler when retrying cannot help (e.g. a corrupt or unsupported file)."""
 
 
-def _on_dead(job_id: str, error: str, tb: str) -> None:
-    log.error("job %s is dead: %s\n%s", job_id, error, tb)
-    with dbmod.SessionLocal() as db:
-        job = db.get(Job, job_id)
-        hook = DEAD_HOOKS.get(job.kind) if job else None
-        if hook:
-            hook(db, job, error)
+def _on_dead(db: Session, job: Job, error: str, tb: str) -> None:
+    """Update the subject before exposing terminal job status to readers."""
+    log.error("job %s is dead: %s\n%s", job.id, error, tb)
+    hook = DEAD_HOOKS.get(job.kind)
+    if hook:
+        hook(db, job, error)
 
 
 DEAD_HOOKS: dict[str, Callable[[Session, Job, str], None]] = {}
